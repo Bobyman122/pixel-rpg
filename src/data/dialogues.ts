@@ -1,199 +1,247 @@
-import { DialogueScript } from '@/types';
+import type { DialogueScript } from '@/types';
+
+const BOSS_BATTLE = {
+  type: 'battle' as const,
+  battle: {
+    enemies: ['dark_knight'],
+    boss: true,
+    music: 'boss',
+    backdrop: 'lair' as const,
+    canRun: false,
+    victory: { flags: ['boss_defeated'], dialogue: 'knight_defeated' },
+  },
+};
 
 export const DIALOGUES: Record<string, DialogueScript> = {
   elder_quest: {
     id: 'elder_quest',
+    start: 'a',
     lines: {
-      start: {
+      a: { speaker: 'Elder Rowan', text: "Kael! Thank the stars you're here. Something terrible happened last night.", next: 'b' },
+      b: {
         speaker: 'Elder Rowan',
-        text: 'Kael, thank heavens you are here! The Crystal of Light has been stolen!',
-        nextId: 'explain',
+        text: 'A knight in black armor broke into the shrine and took the Crystal of Light. Just walked out with it.',
+        next: 'c',
       },
-      explain: {
+      c: {
         speaker: 'Elder Rowan',
-        text: 'A dark knight appeared in the night and took it to Shadowfang Cave, east through the Whispering Forest.',
-        nextId: 'ask',
+        text: 'Our hunters followed his tracks east, through the Whispering Forest, all the way to Shadowfang Cave.',
+        next: 'd',
       },
-      ask: {
+      d: {
         speaker: 'Elder Rowan',
-        text: 'Without the crystal, darkness will consume our village. Will you retrieve it?',
+        text: "Without that crystal, the shadows will swallow Millbrook within days. Will you bring it home?",
         choices: [
-          { text: 'I will bring it back!', nextId: 'accept' },
-          { text: 'That sounds dangerous...', nextId: 'encourage' },
+          { text: "I'll get it back.", next: 'accept' },
+          { text: 'Why me?', next: 'why' },
         ],
-        nextId: null,
+      },
+      why: {
+        speaker: 'Elder Rowan',
+        text: "Because you've never once backed away from a fight you knew was right. And, honestly... because there's no one else.",
+        next: 'd',
       },
       accept: {
         speaker: 'Elder Rowan',
-        text: 'Brave soul! Speak with Lira at her house to the southeast - her magic will aid you. And visit the shop for supplies!',
-        nextId: null,
-        setFlag: 'quest_accepted',
+        text: "Bless you. Lira, the young mage who lives by the inn, has been itching for an adventure. Take her along.",
+        action: { type: 'setFlag', flag: 'quest_accepted' },
+        next: 'tips',
       },
-      encourage: {
+      tips: {
         speaker: 'Elder Rowan',
-        text: 'I know it is frightening, but you are the strongest warrior in our village. Lira and others will help you. Please, we have no one else!',
-        nextId: 'accept',
+        text: "And stop by Bram's shop before you go. Gold won't do you any good in a monster's belly.",
       },
     },
-    startLineId: 'start',
+  },
+
+  elder_waiting: {
+    id: 'elder_waiting',
+    start: 'a',
+    lines: {
+      a: {
+        speaker: 'Elder Rowan',
+        text: 'The forest lies east of the village, and the cave beyond it. Be careful, Kael. Come back to us.',
+      },
+    },
+  },
+
+  elder_ending: {
+    id: 'elder_ending',
+    start: 'a',
+    lines: {
+      a: { speaker: 'Elder Rowan', text: "Kael! You're back... and is that... is that the Crystal of Light?", next: 'b' },
+      b: { speaker: 'Elder Rowan', text: 'Look at it shine. The shadows are already pulling back from the hills.', next: 'c' },
+      c: {
+        speaker: 'Elder Rowan',
+        text: "Millbrook owes you everything. Tonight, we celebrate. Tomorrow... well. Tomorrow can wait.",
+        action: { type: 'ending' },
+      },
+    },
+  },
+
+  lira_before: {
+    id: 'lira_before',
+    start: 'a',
+    lines: {
+      a: {
+        speaker: 'Lira',
+        text: "Oh, Kael! Have you seen the elder? He's been pacing around the plaza all morning. Something about the shrine...",
+      },
+    },
   },
 
   lira_recruit: {
     id: 'lira_recruit',
+    start: 'a',
     lines: {
-      start: {
+      a: { speaker: 'Lira', text: "So it's true. The crystal's really gone.", next: 'b' },
+      b: {
         speaker: 'Lira',
-        text: "You must be Kael. The Elder told me about the stolen crystal. I'm a mage - my fire and healing spells will be useful.",
-        nextId: 'offer',
-      },
-      offer: {
-        speaker: 'Lira',
-        text: 'Let me join you on this quest!',
+        text: "You're going after it, aren't you? Take me with you. My fire spells could use a real target for once.",
         choices: [
-          { text: 'Welcome aboard!', nextId: 'join', flag: 'lira_joined' },
-          { text: 'Not right now.', nextId: 'wait' },
+          { text: 'Glad to have you.', next: 'join' },
+          { text: "It's too dangerous.", next: 'refuse' },
         ],
-        nextId: null,
       },
-      join: {
+      refuse: {
         speaker: 'Lira',
-        text: "Great! I've packed my staff and spellbook. Let's head east through the forest. Be careful - monsters roam those woods.",
-        nextId: null,
-        setFlag: 'lira_joined',
+        text: "Dangerous? I've been setting things on fire since I was six. ...Fine. You know where to find me.",
       },
-      wait: {
-        speaker: 'Lira',
-        text: "I'll be here when you're ready. Don't wait too long though - the darkness grows stronger!",
-        nextId: null,
-      },
-      already_joined: {
-        speaker: 'Lira',
-        text: "Let's keep moving! The cave is through the forest to the east.",
-        nextId: null,
-        requireFlag: 'lira_joined',
-      },
+      join: { text: 'Lira joined the party!', action: { type: 'join', characterId: 'lira' }, next: 'after' },
+      after: { speaker: 'Lira', text: "East through the forest, right? Let's go before I lose my nerve." },
     },
-    startLineId: 'start',
   },
 
   finn_recruit: {
     id: 'finn_recruit',
+    start: 'a',
     lines: {
-      start: {
+      a: { speaker: '???', text: "Whoa, easy! I'm not a monster. Name's Finn. Treasure hunter. Mostly honest.", next: 'b' },
+      b: {
         speaker: 'Finn',
-        text: "Hey! Watch out! These woods are crawling with monsters. Name's Finn - I'm a... freelance treasure hunter.",
-        nextId: 'explain',
+        text: "Shadowfang Cave, huh? Word is there's a knight in black armor hiding in there with something very shiny.",
+        next: 'c',
       },
-      explain: {
+      c: {
         speaker: 'Finn',
-        text: "I heard there's something valuable in Shadowfang Cave to the east. That's where you're headed too, right?",
-        nextId: 'offer',
-      },
-      offer: {
-        speaker: 'Finn',
-        text: "How about we team up? Safety in numbers and all that. Plus I'm pretty handy with a blade!",
+        text: "Tell you what. You do the swinging, I'll do the sneaking. I'll even let you keep the shiny thing. Deal?",
         choices: [
-          { text: "Sure, join us!", nextId: 'join', flag: 'finn_joined' },
-          { text: "We'll manage.", nextId: 'reject' },
+          { text: 'Deal.', next: 'join' },
+          { text: 'No thanks.', next: 'refuse' },
         ],
-        nextId: null,
       },
-      join: {
-        speaker: 'Finn',
-        text: "Excellent! You won't regret it. I know a few tricks - poison blades, smoke bombs... the fun stuff. The cave entrance is to the east!",
-        nextId: null,
-        setFlag: 'finn_joined',
-      },
-      reject: {
-        speaker: 'Finn',
-        text: "Your loss! I'll be around if you change your mind. These goblins aren't exactly friendly.",
-        nextId: null,
-      },
+      refuse: { speaker: 'Finn', text: "Suit yourself. I'll be right here, admiring the trees. They're very nice trees." },
+      join: { text: 'Finn joined the party!', action: { type: 'join', characterId: 'finn' }, next: 'after' },
+      after: { speaker: 'Finn', text: "Great! The cave's up by the northeast cliffs, across the stream. Stay sharp." },
     },
-    startLineId: 'start',
   },
 
-  shopkeeper: {
-    id: 'shopkeeper',
+  merchant: {
+    id: 'merchant',
+    start: 'a',
     lines: {
-      start: {
-        speaker: 'Merchant',
-        text: 'Welcome to my shop! Stock up before your journey. Potions are essential for the road ahead!',
-        nextId: 'hint',
-      },
-      hint: {
-        speaker: 'Merchant',
-        text: "(Tip: Items can be used in battle through the 'Items' command. Potions restore 30 HP!)",
-        nextId: null,
-      },
+      a: { speaker: 'Bram', text: "Welcome to Bram's Supplies! Potions, blades, the works. Have a look.", action: { type: 'shop', shopId: 'millbrook' } },
     },
-    startLineId: 'start',
   },
 
   innkeeper: {
     id: 'innkeeper',
+    start: 'a',
     lines: {
-      start: {
-        speaker: 'Innkeeper',
-        text: 'You look tired from your travels. Would you like to rest? It will restore your HP and MP.',
+      a: {
+        speaker: 'Mae',
+        text: "Welcome to the Sleeping Fox. You look worn out, dear. A bed's on the house for anyone chasing that thief.",
         choices: [
-          { text: 'Yes, please.', nextId: 'rest' },
-          { text: 'No thanks.', nextId: 'decline' },
+          { text: 'Rest for the night', next: 'rest' },
+          { text: 'Not right now', next: 'decline' },
         ],
-        nextId: null,
       },
-      rest: {
-        speaker: 'Innkeeper',
-        text: 'Sweet dreams! ...Your party has been fully healed!',
-        nextId: null,
-        setFlag: '_heal_party',
-      },
-      decline: {
-        speaker: 'Innkeeper',
-        text: 'Come back anytime you need rest!',
-        nextId: null,
-      },
+      rest: { speaker: 'Mae', text: 'Sleep tight!', action: { type: 'heal' }, next: 'morning' },
+      morning: { speaker: 'Mae', text: "Good morning! Everyone's rested and ready." },
+      decline: { speaker: 'Mae', text: "Door's always open." },
     },
-    startLineId: 'start',
   },
 
-  villager_generic: {
-    id: 'villager_generic',
+  boy: {
+    id: 'boy',
+    start: 'a',
     lines: {
-      start: {
-        speaker: 'Villager',
-        text: 'Ever since the crystal was stolen, strange shadows have been creeping closer to the village at night...',
-        nextId: 'tip',
-      },
-      tip: {
-        speaker: 'Villager',
-        text: "If you're heading to the forest, watch out for wolves. They're fast but weak to magic!",
-        nextId: null,
+      a: {
+        speaker: 'Tom',
+        text: "The shadows came right up to the well last night. I wasn't scared, though. ...Much.",
       },
     },
-    startLineId: 'start',
   },
 
-  dark_knight_boss: {
-    id: 'dark_knight_boss',
+  boy_after: {
+    id: 'boy_after',
+    start: 'a',
     lines: {
-      start: {
-        speaker: 'Dark Knight',
-        text: 'So, the villagers sent their little heroes to stop me? How... amusing.',
-        nextId: 'taunt',
-      },
-      taunt: {
-        speaker: 'Dark Knight',
-        text: 'This crystal belongs to my master now. Its light will fuel the darkness that consumes this land!',
-        nextId: 'challenge',
-      },
-      challenge: {
-        speaker: 'Dark Knight',
-        text: 'If you want it back, you will have to pry it from my cold, armored hands. Prepare yourselves!',
-        nextId: null,
-        setFlag: '_boss_fight',
+      a: { speaker: 'Tom', text: "You actually did it! When I grow up I'm gonna be a hero too. Or a baker. Probably a hero." },
+    },
+  },
+
+  woman: {
+    id: 'woman',
+    start: 'a',
+    lines: {
+      a: {
+        speaker: 'Hazel',
+        text: "Wolves in the forest are quick. If things get rough, Defend halves the damage you take until your next turn.",
       },
     },
-    startLineId: 'start',
+  },
+
+  oldman: {
+    id: 'oldman',
+    start: 'a',
+    lines: {
+      a: {
+        speaker: 'Old Gus',
+        text: "Heading out? Hold X or Shift to run. My knees haven't let me run in twenty years, so do it for me.",
+      },
+    },
+  },
+
+  kid: {
+    id: 'kid',
+    start: 'a',
+    lines: {
+      a: {
+        speaker: 'Pip',
+        text: "Did you know you can save anywhere outside of a fight? Just open the menu with Esc or C. My sister told me.",
+      },
+    },
+  },
+
+  dark_knight: {
+    id: 'dark_knight',
+    start: 'a',
+    lines: {
+      a: { speaker: 'Dark Knight', text: 'So Millbrook sends children to fetch its precious stone.', next: 'b' },
+      b: { speaker: 'Dark Knight', text: 'This crystal belongs to my master now. Its light will feed the dark that is coming.', next: 'c' },
+      c: {
+        speaker: 'Dark Knight',
+        text: 'Walk away, and I will let you crawl home. Stay... and I will bury you here.',
+        choices: [
+          { text: 'Give back the crystal!', next: 'fight' },
+          { text: '(Back away slowly)', next: 'leave' },
+        ],
+      },
+      leave: { speaker: 'Dark Knight', text: 'Wise. Run along.' },
+      fight: { speaker: 'Dark Knight', text: 'Then die with it in sight.', action: BOSS_BATTLE },
+    },
+  },
+
+  knight_defeated: {
+    id: 'knight_defeated',
+    start: 'a',
+    lines: {
+      a: { speaker: 'Dark Knight', text: 'Impossible... beaten by... villagers...', next: 'b' },
+      b: { speaker: 'Dark Knight', text: 'The master... will come for it... himself...', next: 'c' },
+      c: { text: 'The Dark Knight crumbles into drifting shadow.', next: 'd' },
+      d: { text: 'Kael takes the Crystal of Light!', action: { type: 'giveItem', itemId: 'crystal_of_light' }, next: 'e' },
+      e: { text: "Its warm light fills the cavern. Time to bring it home to Millbrook." },
+    },
   },
 };

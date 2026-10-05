@@ -1,263 +1,158 @@
 import { create } from 'zustand';
-import {
-  Character, Stats, EquipSlot, Direction,
-  Item, InventoryItem,
-  BattleState, BattlePhase, Enemy, BattleEnemy,
-  DialogueScript,
-} from '@/types';
+import { ITEMS } from '@/data/items';
+import { START } from '@/data/maps';
+import { addItem, countItem, removeItem } from '@/systems/inventory';
+import { clampVitals, createCharacter } from '@/systems/progression';
+import { SAVE_VERSION, type SaveData } from '@/systems/save';
+import { DEFAULT_SETTINGS, type Settings } from '@/systems/settings';
+import { effectiveStats } from '@/systems/stats';
+import type { Character, Direction, EquipSlot, InventoryEntry } from '@/types';
 
-interface GameState {
-  // Party
+export interface GameState {
   party: Character[];
-
-  // Inventory
-  inventory: InventoryItem[];
+  inventory: InventoryEntry[];
   gold: number;
+  mapId: string;
+  x: number;
+  y: number;
+  facing: Direction;
+  flags: Record<string, boolean>;
+  playTime: number;
+  settings: Settings;
 
-  // World
-  currentMapId: string;
-  playerX: number;
-  playerY: number;
-  playerFacing: Direction;
-  storyFlags: Set<string>;
+  newGame: () => void;
+  loadSave: (data: SaveData) => void;
+  toSave: () => SaveData;
 
-  // Battle
-  battle: BattleState | null;
-
-  // UI
-  currentDialogue: DialogueScript | null;
-  currentDialogueLine: string | null;
-  menuOpen: boolean;
-  gameStarted: boolean;
-
-  // Party actions
-  addToParty: (character: Character) => void;
-  removeFromParty: (characterId: string) => void;
-  updateCharacterStats: (characterId: string, updates: Partial<Stats>) => void;
-  healParty: () => void;
-  damageCharacter: (characterId: string, amount: number) => void;
-  useCharacterMp: (characterId: string, amount: number) => void;
-
-  // Inventory actions
-  addItem: (item: Item, quantity?: number) => void;
-  removeItem: (itemId: string, quantity?: number) => void;
-  addGold: (amount: number) => void;
-  getItem: (itemId: string) => InventoryItem | undefined;
-
-  // Equipment actions
-  equipItem: (characterId: string, itemId: string, slot: EquipSlot) => void;
-  unequipItem: (characterId: string, slot: EquipSlot) => void;
-
-  // World actions
   setPosition: (x: number, y: number) => void;
-  setFacing: (direction: Direction) => void;
-  setMap: (mapId: string, x: number, y: number) => void;
+  setFacing: (facing: Direction) => void;
+  setMap: (mapId: string, x: number, y: number, facing: Direction) => void;
+
   setFlag: (flag: string) => void;
-  hasFlag: (flag: string) => boolean;
 
-  // Battle actions
-  startBattle: (enemies: Enemy[]) => void;
-  endBattle: () => void;
-  updateBattle: (updates: Partial<BattleState>) => void;
+  addItem: (itemId: string, quantity?: number) => void;
+  removeItem: (itemId: string, quantity?: number) => void;
+  countItem: (itemId: string) => number;
+  addGold: (amount: number) => void;
+  spendGold: (amount: number) => boolean;
 
-  // Dialogue actions
-  startDialogue: (script: DialogueScript) => void;
-  advanceDialogue: (choiceIndex?: number) => void;
-  endDialogue: () => void;
+  setParty: (party: Character[]) => void;
+  updateCharacter: (id: string, fn: (c: Character) => Character) => void;
+  joinParty: (characterId: string) => void;
+  healAll: () => void;
+  equip: (characterId: string, slot: EquipSlot, itemId: string | null) => boolean;
 
-  // Menu
-  toggleMenu: () => void;
-  setGameStarted: (started: boolean) => void;
+  addPlayTime: (seconds: number) => void;
+  updateSettings: (patch: Partial<Settings>) => void;
 }
 
-export const useGameStore = create<GameState>((set, get) => ({
-  party: [],
-  inventory: [],
-  gold: 100,
-  currentMapId: 'millbrook_village',
-  playerX: 7,
-  playerY: 10,
-  playerFacing: Direction.Down,
-  storyFlags: new Set<string>(),
-  battle: null,
-  currentDialogue: null,
-  currentDialogueLine: null,
-  menuOpen: false,
-  gameStarted: false,
+const initialWorld = () => ({
+  party: [] as Character[],
+  inventory: [] as InventoryEntry[],
+  gold: 0,
+  mapId: START.map,
+  x: START.x,
+  y: START.y,
+  facing: START.facing,
+  flags: {} as Record<string, boolean>,
+  playTime: 0,
+});
 
-  addToParty: (character) =>
-    set((s) => ({ party: [...s.party, character] })),
+export const useGame = create<GameState>((set, get) => ({
+  ...initialWorld(),
+  settings: { ...DEFAULT_SETTINGS },
 
-  removeFromParty: (characterId) =>
-    set((s) => ({ party: s.party.filter((c) => c.id !== characterId) })),
+  newGame: () =>
+    set({
+      ...initialWorld(),
+      party: [createCharacter('kael')],
+      inventory: [
+        { itemId: 'potion', quantity: 4 },
+        { itemId: 'antidote', quantity: 1 },
+      ],
+      gold: 150,
+    }),
 
-  updateCharacterStats: (characterId, updates) =>
-    set((s) => ({
-      party: s.party.map((c) =>
-        c.id === characterId ? { ...c, stats: { ...c.stats, ...updates } } : c
-      ),
-    })),
+  loadSave: (d) =>
+    set({
+      party: d.party.map(clampVitals),
+      inventory: d.inventory.filter((e) => ITEMS[e.itemId]),
+      gold: d.gold,
+      mapId: d.mapId,
+      x: d.x,
+      y: d.y,
+      facing: d.facing,
+      flags: Object.fromEntries(d.flags.map((f) => [f, true])),
+      playTime: d.playTime,
+    }),
 
-  healParty: () =>
-    set((s) => ({
-      party: s.party.map((c) => ({
-        ...c,
-        isAlive: true,
-        stats: { ...c.stats, hp: c.stats.maxHp, mp: c.stats.maxMp },
-      })),
-    })),
+  toSave: () => {
+    const s = get();
+    return {
+      version: SAVE_VERSION,
+      savedAt: Date.now(),
+      playTime: s.playTime,
+      party: s.party,
+      inventory: s.inventory,
+      gold: s.gold,
+      mapId: s.mapId,
+      x: s.x,
+      y: s.y,
+      facing: s.facing,
+      flags: Object.keys(s.flags).filter((k) => s.flags[k]),
+    };
+  },
 
-  damageCharacter: (characterId, amount) =>
+  setPosition: (x, y) => set({ x, y }),
+  setFacing: (facing) => set({ facing }),
+  setMap: (mapId, x, y, facing) => set({ mapId, x, y, facing }),
+
+  setFlag: (flag) => set((s) => ({ flags: { ...s.flags, [flag]: true } })),
+
+  addItem: (itemId, quantity = 1) => set((s) => ({ inventory: addItem(s.inventory, itemId, quantity) })),
+  removeItem: (itemId, quantity = 1) => set((s) => ({ inventory: removeItem(s.inventory, itemId, quantity) })),
+  countItem: (itemId) => countItem(get().inventory, itemId),
+  addGold: (amount) => set((s) => ({ gold: Math.max(0, Math.min(999999, s.gold + amount)) })),
+  spendGold: (amount) => {
+    if (get().gold < amount) return false;
+    set((s) => ({ gold: s.gold - amount }));
+    return true;
+  },
+
+  setParty: (party) => set({ party }),
+  updateCharacter: (id, fn) => set((s) => ({ party: s.party.map((c) => (c.id === id ? fn(c) : c)) })),
+
+  joinParty: (characterId) => {
+    const s = get();
+    if (s.party.some((c) => c.id === characterId)) return;
+    const level = s.party[0]?.level ?? 1;
+    set({ party: [...s.party, createCharacter(characterId, level)] });
+  },
+
+  healAll: () =>
     set((s) => ({
       party: s.party.map((c) => {
-        if (c.id !== characterId) return c;
-        const newHp = Math.max(0, c.stats.hp - amount);
-        return { ...c, stats: { ...c.stats, hp: newHp }, isAlive: newHp > 0 };
+        const st = effectiveStats(c);
+        return { ...c, hp: st.maxHp, mp: st.maxMp };
       }),
     })),
 
-  useCharacterMp: (characterId, amount) =>
-    set((s) => ({
-      party: s.party.map((c) =>
-        c.id === characterId
-          ? { ...c, stats: { ...c.stats, mp: Math.max(0, c.stats.mp - amount) } }
-          : c
-      ),
-    })),
-
-  addItem: (item, quantity = 1) =>
-    set((s) => {
-      const existing = s.inventory.find((i) => i.item.id === item.id);
-      if (existing) {
-        return {
-          inventory: s.inventory.map((i) =>
-            i.item.id === item.id ? { ...i, quantity: i.quantity + quantity } : i
-          ),
-        };
-      }
-      return { inventory: [...s.inventory, { item, quantity }] };
-    }),
-
-  removeItem: (itemId, quantity = 1) =>
-    set((s) => ({
-      inventory: s.inventory
-        .map((i) =>
-          i.item.id === itemId ? { ...i, quantity: i.quantity - quantity } : i
-        )
-        .filter((i) => i.quantity > 0),
-    })),
-
-  addGold: (amount) => set((s) => ({ gold: s.gold + amount })),
-
-  getItem: (itemId) => get().inventory.find((i) => i.item.id === itemId),
-
-  equipItem: (characterId, itemId, slot) =>
-    set((s) => ({
-      party: s.party.map((c) =>
-        c.id === characterId
-          ? { ...c, equipment: { ...c.equipment, [slot]: itemId } }
-          : c
-      ),
-    })),
-
-  unequipItem: (characterId, slot) =>
-    set((s) => ({
-      party: s.party.map((c) =>
-        c.id === characterId
-          ? { ...c, equipment: { ...c.equipment, [slot]: null } }
-          : c
-      ),
-    })),
-
-  setPosition: (x, y) => set({ playerX: x, playerY: y }),
-  setFacing: (direction) => set({ playerFacing: direction }),
-  setMap: (mapId, x, y) => set({ currentMapId: mapId, playerX: x, playerY: y }),
-
-  setFlag: (flag) =>
-    set((s) => {
-      const flags = new Set(s.storyFlags);
-      flags.add(flag);
-      return { storyFlags: flags };
-    }),
-
-  hasFlag: (flag) => get().storyFlags.has(flag),
-
-  startBattle: (enemies) => {
-    const battleEnemies: BattleEnemy[] = enemies.map((e, i) => ({
-      ...e,
-      battleId: `${e.id}_${i}`,
-      currentHp: e.stats.maxHp,
-      currentMp: e.stats.maxMp,
-      statusEffects: [],
-    }));
-
-    const party = get().party.filter((c) => c.isAlive);
-    const allUnits = [
-      ...party.map((c) => ({ id: c.id, spd: c.stats.spd })),
-      ...battleEnemies.map((e) => ({ id: e.battleId, spd: e.stats.spd })),
-    ].sort((a, b) => b.spd - a.spd);
-
-    set({
-      battle: {
-        enemies: battleEnemies,
-        turnOrder: allUnits.map((u) => u.id),
-        currentTurnIndex: 0,
-        phase: BattlePhase.Start,
-        actionQueue: [],
-        battleLog: ['A battle begins!'],
-        selectedCommand: null,
-        selectedSkill: null,
-        currentCharacterIndex: 0,
-      },
-    });
+  equip: (characterId, slot, itemId) => {
+    const s = get();
+    const c = s.party.find((p) => p.id === characterId);
+    if (!c) return false;
+    if (itemId && countItem(s.inventory, itemId) < 1) return false;
+    let inventory = s.inventory;
+    const current = c.equipment[slot];
+    if (current) inventory = addItem(inventory, current, 1);
+    if (itemId) inventory = removeItem(inventory, itemId, 1);
+    const updated = clampVitals({ ...c, equipment: { ...c.equipment, [slot]: itemId } });
+    set({ inventory, party: s.party.map((p) => (p.id === characterId ? updated : p)) });
+    return true;
   },
 
-  endBattle: () => set({ battle: null }),
-
-  updateBattle: (updates) =>
-    set((s) => ({
-      battle: s.battle ? { ...s.battle, ...updates } : null,
-    })),
-
-  startDialogue: (script) =>
-    set({ currentDialogue: script, currentDialogueLine: script.startLineId }),
-
-  advanceDialogue: (choiceIndex) =>
-    set((s) => {
-      if (!s.currentDialogue || !s.currentDialogueLine) {
-        return { currentDialogue: null, currentDialogueLine: null };
-      }
-      const line = s.currentDialogue.lines[s.currentDialogueLine];
-      if (!line) return { currentDialogue: null, currentDialogueLine: null };
-
-      // Set flag if present
-      if (line.setFlag) {
-        const flags = new Set(s.storyFlags);
-        flags.add(line.setFlag);
-        s = { ...s, storyFlags: flags };
-      }
-
-      // Handle choices
-      if (line.choices && choiceIndex !== undefined) {
-        const choice = line.choices[choiceIndex];
-        if (choice?.flag) {
-          const flags = new Set(s.storyFlags);
-          flags.add(choice.flag);
-          return { ...s, storyFlags: flags, currentDialogueLine: choice.nextId };
-        }
-        return { currentDialogueLine: choice?.nextId ?? null };
-      }
-
-      // No next line = end
-      if (!line.nextId) {
-        return { currentDialogue: null, currentDialogueLine: null };
-      }
-
-      return { currentDialogueLine: line.nextId };
-    }),
-
-  endDialogue: () => set({ currentDialogue: null, currentDialogueLine: null }),
-
-  toggleMenu: () => set((s) => ({ menuOpen: !s.menuOpen })),
-  setGameStarted: (started) => set({ gameStarted: started }),
+  addPlayTime: (seconds) => set((s) => ({ playTime: s.playTime + seconds })),
+  updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
 }));
+
+export const game = () => useGame.getState();

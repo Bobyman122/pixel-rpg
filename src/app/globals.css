@@ -1,16 +1,353 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
-  --background: #000000;
-  --foreground: #ededed;
+  --bg: #0b0a1c;
+  --bg-2: #141235;
+  --ink: #e6e3ff;
+  --ink-dim: #9a94c8;
+  --line: rgba(160, 150, 255, 0.16);
+  --accent: #78b4ff;
+  --btn-a: #e2434f;
+  --btn-b: #e7b52f;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  margin: 0;
-  padding: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 50% 30%, rgba(70, 80, 200, 0.18), transparent 70%),
+    radial-gradient(800px 500px at 50% 110%, rgba(150, 60, 160, 0.16), transparent 70%),
+    var(--bg);
+}
+
+/* ---------- layout ---------- */
+
+.app {
+  min-height: 100dvh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  box-sizing: border-box;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 16px;
+  box-sizing: border-box;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--ink);
+  text-shadow: 0 0 18px rgba(120, 180, 255, 0.45);
+}
+
+.toolbar {
+  display: flex;
+  gap: 6px;
+}
+
+.tool {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.tool:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tool.is-on {
+  color: var(--accent);
+  border-color: rgba(120, 180, 255, 0.45);
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+/* ---------- the screen ---------- */
+
+.bezel {
+  position: relative;
+  box-sizing: border-box;
+  padding: 6px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2a2846, #15142a);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 90px rgba(80, 110, 255, 0.14);
+}
+
+.screen {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border-radius: 4px;
   background: #000;
-  color: var(--foreground);
-  overflow: hidden;
-  width: 100vw;
-  height: 100vh;
+}
+
+.crt {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 62%, rgba(0, 0, 0, 0.32) 100%),
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 2px, rgba(0, 0, 0, 0.16) 2px, rgba(0, 0, 0, 0.16) 3px);
+  mix-blend-mode: multiply;
+}
+
+/* ---------- keyboard legend ---------- */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 22px;
+  padding: 12px 16px 18px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom-width: 3px;
+  background: linear-gradient(180deg, #2a2850, #1c1a3a);
+  color: var(--ink);
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---------- touch controls ---------- */
+
+.touch-controls {
+  --pad: clamp(112px, 36vw, 156px);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px calc(16px + env(safe-area-inset-bottom));
+  touch-action: none;
+}
+
+.touch-left {
+  justify-self: start;
+}
+
+.touch-right {
+  justify-self: end;
+  position: relative;
+  width: var(--pad);
+  height: calc(var(--pad) * 0.86);
+}
+
+.touch-center {
+  justify-self: center;
+  align-self: end;
+  padding-bottom: 6px;
+}
+
+.dpad {
+  width: var(--pad);
+  height: var(--pad);
+  touch-action: none;
+  display: grid;
+  place-items: center;
+}
+
+.dpad-cross {
+  position: relative;
+  width: 88%;
+  height: 88%;
+}
+
+.dpad-arm,
+.dpad-hub {
+  position: absolute;
+  background: linear-gradient(180deg, #34324e, #222036);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 3px 0 #0c0b18;
+}
+
+.dpad-hub {
+  left: 33.3%;
+  top: 33.3%;
+  width: 33.4%;
+  height: 33.4%;
+  box-shadow: none;
+}
+
+.dpad-up,
+.dpad-down {
+  left: 33.3%;
+  width: 33.4%;
+  height: 35%;
+}
+
+.dpad-left,
+.dpad-right {
+  top: 33.3%;
+  width: 35%;
+  height: 33.4%;
+}
+
+.dpad-up {
+  top: 0;
+  border-radius: 10px 10px 0 0;
+}
+.dpad-down {
+  bottom: 0;
+  border-radius: 0 0 10px 10px;
+}
+.dpad-left {
+  left: 0;
+  border-radius: 10px 0 0 10px;
+}
+.dpad-right {
+  right: 0;
+  border-radius: 0 10px 10px 0;
+}
+
+.dpad-arm.is-down {
+  background: linear-gradient(180deg, #4b4874, #33305a);
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.face-btn {
+  position: absolute;
+  width: calc(var(--pad) * 0.42);
+  height: calc(var(--pad) * 0.42);
+  border-radius: 50%;
+  border: none;
+  color: rgba(255, 255, 255, 0.92);
+  font: 800 20px/1 ui-sans-serif, system-ui, sans-serif;
+  touch-action: none;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.25),
+    0 4px 0 #0c0b18;
+  transition: transform 0.05s;
+}
+
+.face-a {
+  right: 0;
+  top: 0;
+  background: radial-gradient(circle at 35% 30%, #ff7a82, var(--btn-a) 60%);
+}
+
+.face-b {
+  left: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 35% 30%, #ffe08a, var(--btn-b) 60%);
+  color: #3a2a00;
+}
+
+.face-btn.is-down,
+.pill-btn.is-down {
+  transform: translateY(3px);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.pill-btn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(180deg, #3a3856, #26243e);
+  color: var(--ink-dim);
+  font: 700 10px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.18em;
+  touch-action: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 3px 0 #0c0b18;
+}
+
+/* Phones held sideways: float the controls over the edges of the screen. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .app.has-touch .topbar {
+    display: none;
+  }
+  .app.has-touch .touch-controls {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 0 calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+  }
+  .app.has-touch .touch-left,
+  .app.has-touch .touch-right,
+  .app.has-touch .touch-center {
+    pointer-events: auto;
+    opacity: 0.82;
+  }
+  .app.has-touch .touch-center {
+    position: absolute;
+    right: calc(14px + env(safe-area-inset-right));
+    top: calc(12px + env(safe-area-inset-top));
+    padding: 0;
+  }
 }

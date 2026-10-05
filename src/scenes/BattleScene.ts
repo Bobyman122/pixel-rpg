@@ -8,12 +8,12 @@ import { Clock } from '@/engine/GameLoop';
 import { Input } from '@/engine/InputManager';
 import { SceneManager, type Scene } from '@/engine/SceneManager';
 import { BATTLE_FIELD_H, getBackdrop } from '@/gfx/backdrops';
-import { tintCanvas } from '@/gfx/canvas';
+import { makeCanvas, tintCanvas } from '@/gfx/canvas';
 import { drawShadow, getSheet } from '@/gfx/characters';
 import { createEffect, FloatingText, Particles, type BattleEffect } from '@/gfx/effects';
-import { getEnemySprite, ENEMY_FRAMES } from '@/gfx/enemies';
+import { enemyFootOffset, ENEMY_FRAMES, FLYING, getEnemySprite } from '@/gfx/enemies';
 import { drawText, measureText, wrapText } from '@/gfx/font';
-import { COLORS, drawCursor, drawGauge, drawIcon, drawMoreArrow, drawWindow, hpColor } from '@/gfx/ui';
+import { COLORS, drawCursor, drawGauge, drawIcon, drawMoreArrow, drawSelection, drawWindow, hpColor } from '@/gfx/ui';
 import { game } from '@/store/gameStore';
 import {
   alive,
@@ -58,7 +58,22 @@ interface Unit {
   fade: number;
   glow: number;
   walking: boolean;
+  /** Seconds left in the weapon-swing pose. */
+  strike: number;
   lastRound: number;
+}
+
+/** Party sprites are drawn at 2x in battle. */
+const doubled = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+function double(src: HTMLCanvasElement): HTMLCanvasElement {
+  let c = doubled.get(src);
+  if (!c) {
+    const [canvas, ctx] = makeCanvas(src.width * 2, src.height * 2);
+    ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
+    doubled.set(src, canvas);
+    c = canvas;
+  }
+  return c;
 }
 
 type Action =
@@ -70,25 +85,33 @@ type Action =
 type MenuMode = 'command' | 'skill' | 'item' | 'target';
 
 const PANEL_Y = BATTLE_FIELD_H;
+// Feet positions on the battlefield.
 const PARTY_SLOTS: [number, number][] = [
-  [196, 86],
-  [212, 113],
-  [228, 140],
+  [234, 76],
+  [258, 97],
+  [282, 118],
 ];
 const ENEMY_SLOTS: Record<number, [number, number][]> = {
-  1: [[74, 124]],
+  1: [[100, 112]],
   2: [
-    [50, 108],
-    [104, 132],
+    [60, 98],
+    [148, 114],
   ],
   3: [
-    [42, 102],
-    [104, 108],
-    [70, 140],
+    [44, 86],
+    [152, 92],
+    [100, 120],
   ],
 };
+const BOSS_SLOT: [number, number] = [104, 118];
+const COMMAND_W = 112;
+const LIST_ROWS = 3;
 
 const FX_SOUND: Partial<Record<SkillFx, SfxName>> = {
+  slash: 'slash',
+  claw: 'slash',
+  bite: 'slash',
+  bash: 'slash',
   fire: 'fire',
   ice: 'ice',
   heal: 'heal',
@@ -99,6 +122,10 @@ const FX_SOUND: Partial<Record<SkillFx, SfxName>> = {
   steal: 'steal',
   sonic: 'magic',
 };
+
+/** Floating numbers sit on the battlefield, so they keep bright colours whatever the window theme. */
+const NUMBER_HEAL = '#80f890';
+const NUMBER_MP = '#70b8ff';
 
 const STATUS_LABEL: Record<StatusType, string> = { poison: 'Poison', sleep: 'Sleep', defUp: 'DEF Up' };
 const STATUS_ICON: Record<StatusType, string> = { poison: 'poison', sleep: 'sleep', defUp: 'defup' };
@@ -126,7 +153,7 @@ export class BattleScene implements Scene {
   private active: Unit | null = null;
   private menu: MenuMode | null = null;
   private prevMenu: MenuMode = 'command';
-  private cmdCursor = new ListCursor();
+  private cmdCursor = new ListCursor(2);
   private listCursor = new ListCursor(2);
   private listScroll = 0;
   private targetCursor = 0;
@@ -155,25 +182,30 @@ export class BattleScene implements Scene {
       fade: 0,
       glow: 0,
       walking: false,
+      strike: 0,
       lastRound: -1,
     }));
     const combatants = this.enemyIds.map((id, i) => fromEnemy(ENEMIES[id], i));
     labelEnemies(combatants);
     const slots = ENEMY_SLOTS[Math.min(3, combatants.length)] ?? ENEMY_SLOTS[3];
-    this.enemies = combatants.map((c, i) => ({
-      c,
-      side: 'enemy' as const,
-      enemyId: c.enemyId,
-      homeX: slots[i % slots.length][0],
-      homeY: slots[i % slots.length][1] + (ENEMIES[c.enemyId!]?.boss ? 6 : 0),
-      offsetX: 0,
-      offsetY: 0,
-      flash: 0,
-      fade: 0,
-      glow: 0,
-      walking: false,
-      lastRound: -1,
-    }));
+    this.enemies = combatants.map((c, i) => {
+      const [hx, hy] = ENEMIES[c.enemyId!]?.boss ? BOSS_SLOT : slots[i % slots.length];
+      return {
+        c,
+        side: 'enemy' as const,
+        enemyId: c.enemyId,
+        homeX: hx,
+        homeY: hy,
+        offsetX: 0,
+        offsetY: 0,
+        flash: 0,
+        fade: 0,
+        glow: 0,
+        walking: false,
+        strike: 0,
+        lastRound: -1,
+      };
+    });
   }
 
   private get speed() {
@@ -278,7 +310,7 @@ export class BattleScene implements Scene {
       for (const o of ticks) {
         const [x, y] = this.center(unit);
         this.numbers.push(new FloatingText(String(o.amount), x, y - 6, '#a0f080'));
-        this.effects.push(createEffect('poison', x, y, this.particles));
+        this.effects.push(createEffect('poison', x, y, this.particles, this.fxScale(unit)));
         Sound.sfx('poison');
         unit.flash = 0.25;
         yield* this.wait(0.55);
@@ -337,7 +369,7 @@ export class BattleScene implements Scene {
       this.topMessage = 'Defend';
       Sound.sfx('defend');
       const [x, y] = this.center(unit);
-      this.effects.push(createEffect('buff', x, y, this.particles));
+      this.effects.push(createEffect('buff', x, y, this.particles, this.fxScale(unit)));
       yield* this.wait(0.6);
       this.topMessage = null;
       return;
@@ -381,7 +413,7 @@ export class BattleScene implements Scene {
       yield* this.wait(0.25);
       for (const target of action.targets) {
         const [x, y] = this.center(target);
-        this.effects.push(createEffect('heal', x, y, this.particles));
+        this.effects.push(createEffect('heal', x, y, this.particles, this.fxScale(target)));
         Sound.sfx('heal');
         yield* this.wait(0.45);
         this.showOutcome(resolveItem(target.c, item));
@@ -410,13 +442,14 @@ export class BattleScene implements Scene {
       unit.walking = true;
       yield* this.wait(0.12);
       unit.walking = false;
+      unit.strike = 0.35;
     }
 
     // effect on every target at once
     let longest = 0;
     for (const target of action.targets) {
       const [x, y] = this.center(target);
-      const e = createEffect(skill.fx, x, y, this.particles);
+      const e = createEffect(skill.fx, x, y, this.particles, this.fxScale(target));
       longest = Math.max(longest, e.duration);
       this.effects.push(e);
     }
@@ -456,11 +489,11 @@ export class BattleScene implements Scene {
         break;
       case 'heal':
       case 'revive':
-        this.numbers.push(new FloatingText(String(o.amount), x, top + 6, COLORS.heal));
-        if (o.kind === 'revive') this.numbers.push(new FloatingText('Revived!', x, top - 6, COLORS.heal));
+        this.numbers.push(new FloatingText(String(o.amount), x, top + 6, NUMBER_HEAL));
+        if (o.kind === 'revive') this.numbers.push(new FloatingText('Revived!', x, top - 6, NUMBER_HEAL));
         break;
       case 'mp':
-        this.numbers.push(new FloatingText(`${o.amount} MP`, x, top + 6, COLORS.mp));
+        this.numbers.push(new FloatingText(`${o.amount} MP`, x, top + 6, NUMBER_MP));
         break;
       case 'miss':
         this.numbers.push(new FloatingText('Miss', x, top + 6, '#d0d0e0'));
@@ -470,7 +503,7 @@ export class BattleScene implements Scene {
         if (o.status) this.numbers.push(new FloatingText(STATUS_LABEL[o.status], x, top - 6, o.status === 'defUp' ? '#f8d860' : '#c8a8ff'));
         break;
       case 'cure':
-        this.numbers.push(new FloatingText('Cured!', x, top + 6, COLORS.heal));
+        this.numbers.push(new FloatingText('Cured!', x, top + 6, NUMBER_HEAL));
         break;
       case 'wake':
         this.numbers.push(new FloatingText('Awake!', x, top - 6, '#c8d8ff'));
@@ -490,6 +523,8 @@ export class BattleScene implements Scene {
   private *handleDeath(u: Unit): Flow {
     if (u.side === 'enemy') {
       Sound.sfx('enemyDie');
+      const [x, y] = this.center(u);
+      this.effects.push(createEffect('explosion', x, y, this.particles, ENEMIES[u.enemyId ?? '']?.boss ? 3 : 1.5));
       let t = 0;
       while (t < 0.5) {
         t += (yield) * this.speed;
@@ -546,7 +581,7 @@ export class BattleScene implements Scene {
       yield* this.wait(0.6);
       yield* this.showInfo(lines);
       for (let i = 0; i < levelLines.length; i += 3) {
-        if (i === 0) Sound.sfx('save');
+        if (i === 0) Sound.playJingle('levelup', false);
         yield* this.showInfo(levelLines.slice(i, i + 3));
       }
     } else if (result === 'defeat') {
@@ -587,6 +622,7 @@ export class BattleScene implements Scene {
     for (const u of [...this.party, ...this.enemies]) {
       u.flash = Math.max(0, u.flash - dt);
       u.glow = Math.max(0, u.glow - dt);
+      u.strike = Math.max(0, u.strike - dt);
     }
     this.particles.update(dt);
     for (const e of this.effects) e.update(dt);
@@ -701,7 +737,7 @@ export class BattleScene implements Scene {
       case 'skill': {
         const skills = this.skillsOf(unit);
         this.listCursor.update(skills.length);
-        this.listScroll = scrollFor(this.listCursor.index, this.listScroll, 4, 2);
+        this.listScroll = scrollFor(this.listCursor.index, this.listScroll, LIST_ROWS, 2);
         if (cancelPressed()) {
           Sound.sfx('cancel');
           this.menu = 'command';
@@ -720,7 +756,7 @@ export class BattleScene implements Scene {
       case 'item': {
         const items = this.battleItems();
         this.listCursor.update(items.length);
-        this.listScroll = scrollFor(this.listCursor.index, this.listScroll, 4, 2);
+        this.listScroll = scrollFor(this.listCursor.index, this.listScroll, LIST_ROWS, 2);
         if (cancelPressed()) {
           Sound.sfx('cancel');
           this.menu = 'command';
@@ -768,25 +804,47 @@ export class BattleScene implements Scene {
   // Rendering
   // -------------------------------------------------------------------------
 
+  private fxScale(u: Unit) {
+    return u.side === 'enemy' ? 2 : 1;
+  }
+
   private unitHeight(u: Unit) {
-    if (u.side === 'party') return 24;
-    return getEnemySprite(u.enemyId ?? 'slime').height;
+    if (u.side === 'party') return 32;
+    return getEnemySprite(u.enemyId ?? 'slime').height - enemyFootOffset(u.enemyId ?? '');
+  }
+
+  private hover(u: Unit) {
+    return u.enemyId && FLYING.has(u.enemyId) ? -12 : 0;
   }
 
   /** Visual centre of a unit (for effects and numbers). */
   private center(u: Unit): [number, number] {
     const h = this.unitHeight(u);
-    const fly = u.enemyId === 'bat' ? -10 : 0;
-    return [Math.round(u.homeX + u.offsetX), Math.round(u.homeY + u.offsetY - h / 2 + fly)];
+    return [Math.round(u.homeX + u.offsetX), Math.round(u.homeY + u.offsetY - h / 2 + this.hover(u))];
   }
 
   private partySprite(u: Unit): HTMLCanvasElement {
     const sheet = getSheet(u.look ?? 'kael');
-    if (!alive(u.c)) return sheet.ko;
-    if (this.victoryPose) return sheet.frames[Direction.Down][0];
-    if (u.walking) return sheet.frames[Direction.Left][Math.floor(Clock.time * 8) % 2 ? 1 : 2];
-    if (u.c.hp / u.c.maxHp <= 0.25 || hasStatus(u.c, 'sleep')) return sheet.kneel;
-    return sheet.frames[Direction.Left][0];
+    if (!alive(u.c)) return double(sheet.ko);
+    if (this.victoryPose) return double(sheet.cheer);
+    if (u.strike > 0) return double(sheet.attack[Direction.Left]);
+    if (u.glow > 0) return double(sheet.cast);
+    const left = sheet.frames[Direction.Left];
+    if (u.walking) return double(left[Math.floor(Clock.time * 10) % left.length]);
+    return double(left[0]);
+  }
+
+  private drawOutlineGlow(ctx: CanvasRenderingContext2D, sprite: HTMLCanvasElement, x: number, y: number, color: string, alpha: number) {
+    const g = tintCanvas(sprite, color);
+    ctx.globalAlpha = alpha;
+    for (const [dx, dy] of [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ])
+      ctx.drawImage(g, x + dx, y + dy);
+    ctx.globalAlpha = 1;
   }
 
   render(ctx: CanvasRenderingContext2D) {
@@ -797,36 +855,26 @@ export class BattleScene implements Scene {
     const enemies = [...this.enemies].sort((a, b) => a.homeY - b.homeY);
     enemies.forEach((u, i) => {
       if (u.fade >= 1) return;
-      const frames = ENEMY_FRAMES[u.enemyId ?? ''] ?? 1;
+      const id = u.enemyId ?? 'slime';
+      const frames = ENEMY_FRAMES[id] ?? 1;
       const frame = frames > 1 ? Math.floor(t * 7 + i) % frames : 0;
-      const sprite = getEnemySprite(u.enemyId ?? 'slime', frame);
-      const flying = u.enemyId === 'bat';
-      const bob = flying ? Math.round(Math.sin(t * 4 + i) * 3) - 10 : Math.round(Math.sin(t * 2 + i * 1.7) * 1);
+      const sprite = getEnemySprite(id, frame);
+      const flying = FLYING.has(id);
+      const bob = flying ? Math.round(Math.sin(t * 4 + i) * 3) : Math.round(Math.sin(t * 2 + i * 1.7) * 1);
       const x = Math.round(u.homeX + u.offsetX - sprite.width / 2);
-      const y = Math.round(u.homeY + u.offsetY - sprite.height + bob);
-      drawShadow(ctx, Math.round(u.homeX), Math.round(u.homeY), Math.min(40, Math.round(sprite.width * 0.7)));
+      const y = Math.round(u.homeY + u.offsetY - sprite.height + enemyFootOffset(id) + bob + this.hover(u));
+      drawShadow(ctx, Math.round(u.homeX + u.offsetX), Math.round(u.homeY), Math.min(64, Math.round(sprite.width * 0.6)));
       if (u.fade > 0) {
         ctx.globalAlpha = 1 - u.fade;
         ctx.drawImage(tintCanvas(sprite, '#c03060'), x, y);
         ctx.globalAlpha = 1;
         return;
       }
-      if (u.glow > 0) {
-        const g = tintCanvas(sprite, '#b060ff');
-        ctx.globalAlpha = 0.6;
-        for (const [dx, dy] of [
-          [-1, 0],
-          [1, 0],
-          [0, -1],
-          [0, 1],
-        ])
-          ctx.drawImage(g, x + dx, y + dy);
-        ctx.globalAlpha = 1;
-      }
+      if (u.glow > 0) this.drawOutlineGlow(ctx, sprite, x, y, '#b060ff', 0.7);
       const flashOn = u.flash > 0 && Math.floor(u.flash * 30) % 2 === 0;
-      const shake = u.flash > 0.15 && u.side === 'enemy' ? Math.round(Math.sin(t * 80) * 2) : 0;
+      const shake = u.flash > 0.15 ? Math.round(Math.sin(t * 80) * 2) : 0;
       ctx.drawImage(flashOn ? tintCanvas(sprite, '#ffffff') : sprite, x + shake, y);
-      this.drawStatusIcons(ctx, u, x + sprite.width / 2, y - 8);
+      this.drawStatusIcons(ctx, u, x + sprite.width / 2, y - 4);
     });
 
     // party
@@ -835,22 +883,13 @@ export class BattleScene implements Scene {
       const hop = this.victoryPose && alive(u.c) ? -Math.abs(Math.round(Math.sin(t * 6 + u.homeY) * 4)) : 0;
       const x = Math.round(u.homeX + u.offsetX - sprite.width / 2);
       const y = Math.round(u.homeY + u.offsetY - sprite.height + hop);
-      drawShadow(ctx, Math.round(u.homeX + u.offsetX), Math.round(u.homeY), 12);
-      if (u.glow > 0 || u.c.defending) {
-        const g = tintCanvas(sprite, u.c.defending ? '#78a8ff' : '#ffffff');
-        ctx.globalAlpha = u.c.defending ? 0.5 : 0.8 * Math.abs(Math.sin(t * 20));
-        for (const [dx, dy] of [
-          [-1, 0],
-          [1, 0],
-          [0, -1],
-          [0, 1],
-        ])
-          ctx.drawImage(g, x + dx, y + dy);
-        ctx.globalAlpha = 1;
-      }
+      drawShadow(ctx, Math.round(u.homeX + u.offsetX), Math.round(u.homeY), 22);
+      if (u.c.defending) this.drawOutlineGlow(ctx, sprite, x, y, '#78a8ff', 0.6);
+      else if (u.glow > 0) this.drawOutlineGlow(ctx, sprite, x, y, '#ffffff', 0.8 * Math.abs(Math.sin(t * 20)));
       const flashOn = u.flash > 0 && Math.floor(u.flash * 30) % 2 === 0;
       const shake = u.flash > 0.15 ? Math.round(Math.sin(t * 80) * 2) : 0;
       ctx.drawImage(flashOn ? tintCanvas(sprite, '#ffffff') : sprite, x + shake, y);
+      if (alive(u.c)) this.drawStatusIcons(ctx, u, x + sprite.width / 2, y - 6);
     });
 
     for (const e of this.effects) e.render(ctx);
@@ -860,18 +899,14 @@ export class BattleScene implements Scene {
     this.renderTargetCursor(ctx);
     this.renderPanel(ctx);
 
-    if (this.topMessage) {
-      const w = Math.max(80, measureText(this.topMessage) + 24);
-      drawWindow(ctx, Math.floor((GAME_WIDTH - w) / 2), 6, w, 22);
-      drawText(ctx, this.topMessage, GAME_WIDTH / 2, 13, COLORS.text, { align: 'center' });
-    }
+    if (this.topMessage) this.banner(ctx, this.topMessage);
 
     if (this.infoLines) {
-      const lines = this.infoLines.flatMap((l) => wrapText(l, 220));
-      const h = lines.length * 12 + 16;
-      drawWindow(ctx, 8, 8, GAME_WIDTH - 16, h);
-      lines.forEach((l, i) => drawText(ctx, l, 20, 15 + i * 12));
-      drawMoreArrow(ctx, GAME_WIDTH - 26, 8 + h - 10);
+      const lines = this.infoLines.flatMap((l) => wrapText(l, 280));
+      const h = lines.length * 12 + 14;
+      drawWindow(ctx, 8, 6, GAME_WIDTH - 16, h);
+      lines.forEach((l, i) => drawText(ctx, l, 20, 13 + i * 12));
+      drawMoreArrow(ctx, GAME_WIDTH - 24, 6 + h - 9);
     }
 
     if (this.introFade > 0) {
@@ -880,6 +915,13 @@ export class BattleScene implements Scene {
       ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
       ctx.globalAlpha = 1;
     }
+  }
+
+  /** Centred one-line window at the top of the battlefield. */
+  private banner(ctx: CanvasRenderingContext2D, text: string) {
+    const w = Math.max(80, measureText(text) + 28);
+    drawWindow(ctx, Math.floor((GAME_WIDTH - w) / 2), 4, w, 22);
+    drawText(ctx, text, GAME_WIDTH / 2, 11, COLORS.text, { align: 'center' });
   }
 
   private drawStatusIcons(ctx: CanvasRenderingContext2D, u: Unit, cx: number, y: number) {
@@ -896,21 +938,16 @@ export class BattleScene implements Scene {
     const pool = this.targetPool();
     const list = this.pendingIsAll() ? pool : [pool[this.targetCursor]].filter(Boolean);
     const blink = this.pendingIsAll() && Math.floor(Clock.time * 8) % 2 === 0;
-    if (blink) return;
-    for (const u of list) {
-      const h = this.unitHeight(u);
-      const w = u.side === 'party' ? 16 : getEnemySprite(u.enemyId ?? 'slime').width;
-      const [, cy] = this.center(u);
-      drawCursor(ctx, u.homeX + u.offsetX - w / 2 - 1, cy + (h > 40 ? 0 : 2));
+    if (!blink) {
+      for (const u of list) {
+        const w = u.side === 'party' ? 32 : getEnemySprite(u.enemyId ?? 'slime').width;
+        const [, cy] = this.center(u);
+        drawCursor(ctx, u.homeX + u.offsetX - Math.min(w, 80) / 2 + (u.side === 'party' ? 4 : 8), cy);
+      }
     }
-    // help window naming the target
+    // name the target at the top
     const target = list[0];
-    if (target) {
-      const label = this.pendingIsAll() ? (target.side === 'enemy' ? 'All enemies' : 'All allies') : target.c.name;
-      const w = measureText(label) + 24;
-      drawWindow(ctx, Math.floor((GAME_WIDTH - w) / 2), 6, w, 22);
-      drawText(ctx, label, GAME_WIDTH / 2, 13, COLORS.text, { align: 'center' });
-    }
+    if (target) this.banner(ctx, this.pendingIsAll() ? (target.side === 'enemy' ? 'All enemies' : 'All allies') : target.c.name);
   }
 
   private renderPanel(ctx: CanvasRenderingContext2D) {
@@ -922,39 +959,46 @@ export class BattleScene implements Scene {
       return;
     }
 
-    // left: commands or enemy roster
-    drawWindow(ctx, 0, y, 92, h);
+    // left: commands (two columns) or the enemy roster
+    drawWindow(ctx, 0, y, COMMAND_W, h);
     if (this.menu === 'command' && this.active) {
       const cmds = this.commands(this.active);
-      cmds.forEach((c, i) => drawText(ctx, c.label, 22, y + 8 + i * 12, c.enabled ? COLORS.text : COLORS.disabled));
-      drawCursor(ctx, 20, y + 11 + this.cmdCursor.index * 12);
+      cmds.forEach((c, i) => {
+        const cx = 24 + (i % 2) * 48;
+        const cy = y + 9 + Math.floor(i / 2) * 14;
+        drawText(ctx, c.label, cx, cy, !c.enabled ? COLORS.disabled : i === this.cmdCursor.index ? COLORS.highlight : COLORS.text);
+      });
+      const i = this.cmdCursor.index;
+      drawCursor(ctx, 21 + (i % 2) * 48, y + 12 + Math.floor(i / 2) * 14);
     } else {
       const names: string[] = [];
       for (const e of this.enemies) if (alive(e.c)) names.push(e.c.name);
-      names.slice(0, 5).forEach((n, i) => drawText(ctx, n, 10, y + 8 + i * 12));
+      names.slice(0, 3).forEach((n, i) => drawText(ctx, n, 14, y + 9 + i * 14));
     }
 
     // right: party status
-    drawWindow(ctx, 92, y, GAME_WIDTH - 92, h);
+    drawWindow(ctx, COMMAND_W, y, GAME_WIDTH - COMMAND_W, h);
     this.party.forEach((u, i) => {
-      const ry = y + 8 + i * 20;
+      const ry = y + 8 + i * 15;
       const isActive = u === this.active;
       const dead = !alive(u.c);
-      drawText(ctx, u.c.name, 104, ry, dead ? COLORS.hpCrit : isActive ? COLORS.highlight : COLORS.text);
-      let ix = 104 + measureText(u.c.name) + 3;
-      for (const s of u.c.statuses) {
-        drawIcon(ctx, STATUS_ICON[s.type], ix, ry + 1);
+      if (isActive) drawSelection(ctx, COMMAND_W + 6, ry - 2, GAME_WIDTH - COMMAND_W - 12, 15);
+      drawText(ctx, u.c.name, 134, ry, dead ? COLORS.hpCrit : isActive ? COLORS.highlight : COLORS.text);
+      let ix = 134 + measureText(u.c.name) + 3;
+      for (const st of u.c.statuses) {
+        drawIcon(ctx, STATUS_ICON[st.type], ix, ry + 1);
         ix += 8;
       }
       if (u.c.defending) drawIcon(ctx, 'shield', ix, ry + 1);
       const ratio = u.c.hp / u.c.maxHp;
-      drawText(ctx, `${u.c.hp}/${u.c.maxHp}`, 216, ry, dead ? COLORS.hpCrit : ratio <= 0.25 ? hpColor(ratio) : COLORS.text, {
+      drawText(ctx, `${u.c.hp}/${u.c.maxHp}`, 250, ry, dead ? COLORS.hpCrit : ratio <= 0.25 ? hpColor(ratio) : COLORS.text, {
         align: 'right',
       });
-      drawGauge(ctx, 172, ry + 10, 44, ratio, 'hp');
-      drawText(ctx, String(u.c.mp), 246, ry, COLORS.mp, { align: 'right' });
-      drawGauge(ctx, 222, ry + 10, 24, u.c.maxMp ? u.c.mp / u.c.maxMp : 0, 'mp');
-      if (isActive && this.menu) drawCursor(ctx, 102, ry + 3);
+      drawGauge(ctx, 206, ry + 9, 44, ratio, 'hp');
+      drawText(ctx, 'MP', 262, ry, COLORS.dim);
+      drawText(ctx, String(u.c.mp), 308, ry, COLORS.mp, { align: 'right' });
+      drawGauge(ctx, 262, ry + 9, 46, u.c.maxMp ? u.c.mp / u.c.maxMp : 0, 'mp');
+      if (isActive && this.menu) drawCursor(ctx, 131, ry + 3);
     });
   }
 
@@ -963,40 +1007,41 @@ export class BattleScene implements Scene {
     const y = PANEL_Y;
     drawWindow(ctx, 0, y, GAME_WIDTH, GAME_HEIGHT - y);
     let help = '';
+    const rowY = (row: number) => y + 9 + row * 14;
     if (this.menu === 'skill') {
       const skills = this.skillsOf(unit);
-      skills.forEach((s, i) => {
+      skills.forEach((sk, i) => {
         const row = Math.floor(i / 2) - this.listScroll;
-        if (row < 0 || row > 3) return;
-        const x = 22 + (i % 2) * 124;
-        const ry = y + 9 + row * 14;
-        const ok = unit.c.mp >= s.mpCost;
-        drawText(ctx, s.name, x, ry, ok ? COLORS.text : COLORS.disabled);
-        drawText(ctx, String(s.mpCost), x + 98, ry, ok ? COLORS.mp : COLORS.disabled, { align: 'right' });
+        if (row < 0 || row >= LIST_ROWS) return;
+        const x = 24 + (i % 2) * 150;
+        const ok = unit.c.mp >= sk.mpCost;
+        if (i === this.listCursor.index) drawSelection(ctx, x - 4, rowY(row) - 3, 140, 14);
+        drawText(ctx, sk.name, x, rowY(row), ok ? COLORS.text : COLORS.disabled);
+        drawText(ctx, `${sk.mpCost} MP`, x + 132, rowY(row), ok ? COLORS.mp : COLORS.disabled, { align: 'right' });
       });
       help = skills[this.listCursor.index]?.description ?? '';
     } else {
       const items = this.battleItems();
       items.forEach((e, i) => {
         const row = Math.floor(i / 2) - this.listScroll;
-        if (row < 0 || row > 3) return;
-        const x = 22 + (i % 2) * 124;
-        const ry = y + 9 + row * 14;
-        drawIcon(ctx, e.item.icon, x, ry);
-        drawText(ctx, e.item.name, x + 11, ry);
-        drawText(ctx, `${e.quantity}`, x + 98, ry, COLORS.dim, { align: 'right' });
+        if (row < 0 || row >= LIST_ROWS) return;
+        const x = 24 + (i % 2) * 150;
+        if (i === this.listCursor.index) drawSelection(ctx, x - 4, rowY(row) - 3, 140, 14);
+        drawIcon(ctx, e.item.icon, x, rowY(row) - 4);
+        drawText(ctx, e.item.name, x + 19, rowY(row));
+        drawText(ctx, `${e.quantity}`, x + 132, rowY(row), COLORS.dim, { align: 'right' });
       });
       help = items[this.listCursor.index]?.item.description ?? '';
     }
     const row = Math.floor(this.listCursor.index / 2) - this.listScroll;
-    drawCursor(ctx, 20 + (this.listCursor.index % 2) * 124, y + 12 + row * 14);
+    drawCursor(ctx, 18 + (this.listCursor.index % 2) * 150, rowY(row) + 3);
     if (help) {
       drawWindow(ctx, 0, 0, GAME_WIDTH, 22);
       drawText(ctx, help, 10, 7);
     }
     const label = `${unit.c.name}  MP ${unit.c.mp}/${unit.c.maxMp}`;
-    const lw = measureText(label) + 20;
+    const lw = measureText(label) + 24;
     drawWindow(ctx, GAME_WIDTH - lw, y - 20, lw, 20);
-    drawText(ctx, label, GAME_WIDTH - 10, y - 14, COLORS.text, { align: 'right' });
+    drawText(ctx, label, GAME_WIDTH - 12, y - 14, COLORS.text, { align: 'right' });
   }
 }

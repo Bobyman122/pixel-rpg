@@ -11,14 +11,14 @@ export const ENEMIES: Record<string, EnemyDef> = {
     gold: 8,
     drop: { itemId: 'potion', chance: 0.2 },
   },
-  wolf: {
-    id: 'wolf',
-    name: 'Wolf',
+  sabrecat: {
+    id: 'sabrecat',
+    name: 'Sabrecat',
     stats: { hp: 32, mp: 0, atk: 11, def: 4, mag: 4, spd: 11 },
-    skills: ['bite', 'howl'],
+    skills: ['bite', 'roar'],
     actions: [
       { skillId: 'bite', weight: 3 },
-      { skillId: 'howl', weight: 1 },
+      { skillId: 'roar', weight: 1 },
     ],
     exp: 11,
     gold: 10,
@@ -37,13 +37,23 @@ export const ENEMIES: Record<string, EnemyDef> = {
     gold: 18,
     drop: { itemId: 'potion', chance: 0.25 },
   },
-  bat: {
-    id: 'bat',
-    name: 'Cave Bat',
+  hornet: {
+    id: 'hornet',
+    name: 'Hornet',
+    stats: { hp: 20, mp: 0, atk: 9, def: 2, mag: 3, spd: 15 },
+    skills: ['sting'],
+    actions: [{ skillId: 'sting', weight: 1 }],
+    exp: 8,
+    gold: 7,
+    drop: { itemId: 'antidote', chance: 0.2 },
+  },
+  spider: {
+    id: 'spider',
+    name: 'Cave Spider',
     stats: { hp: 26, mp: 0, atk: 10, def: 4, mag: 8, spd: 13 },
-    skills: ['screech', 'venom_bite'],
+    skills: ['web', 'venom_bite'],
     actions: [
-      { skillId: 'screech', weight: 2 },
+      { skillId: 'web', weight: 2 },
       { skillId: 'venom_bite', weight: 2 },
     ],
     exp: 12,
@@ -63,9 +73,9 @@ export const ENEMIES: Record<string, EnemyDef> = {
     gold: 26,
     drop: { itemId: 'ether', chance: 0.15 },
   },
-  dark_knight: {
-    id: 'dark_knight',
-    name: 'Dark Knight',
+  shadow_samurai: {
+    id: 'shadow_samurai',
+    name: 'Shadow Samurai',
     stats: { hp: 420, mp: 99, atk: 19, def: 15, mag: 17, spd: 9 },
     skills: ['slash', 'dark_slash', 'shadow_wave'],
     actions: [

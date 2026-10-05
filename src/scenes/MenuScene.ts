@@ -5,9 +5,9 @@ import { SKILLS } from '@/data/skills';
 import { Sound } from '@/engine/audio';
 import { GAME_HEIGHT, GAME_WIDTH } from '@/engine/constants';
 import { SceneManager, type Scene } from '@/engine/SceneManager';
-import { getSheet } from '@/gfx/characters';
+import { getFace, getSheet } from '@/gfx/characters';
 import { drawText, measureText, wrapText } from '@/gfx/font';
-import { COLORS, drawCursor, drawGauge, drawIcon, drawWindow } from '@/gfx/ui';
+import { COLORS, drawCursor, drawGauge, drawIcon, drawPortrait, drawSelection, drawWindow } from '@/gfx/ui';
 import { game } from '@/store/gameStore';
 import { calcHeal, fromCharacter, itemUseful, resolveItem } from '@/systems/battle';
 import { sortedInventory } from '@/systems/inventory';
@@ -23,6 +23,9 @@ type Mode = 'main' | 'pickChar' | 'items' | 'skills' | 'target' | 'equip' | 'equ
 
 const COMMANDS = ['Items', 'Skills', 'Equip', 'Save', 'Config'] as const;
 const SLOT_LABEL: Record<EquipSlot, string> = { weapon: 'Weapon', armor: 'Armor', accessory: 'Accessory' };
+const ITEM_ROWS = 8;
+const SKILL_ROWS = 5;
+const PICK_ROWS = 4;
 
 export class MenuScene implements Scene {
   private mode: Mode = 'main';
@@ -133,7 +136,7 @@ export class MenuScene implements Scene {
     const items = this.items();
     this.list.clamp(items.length);
     this.list.update(items.length);
-    this.listScroll = scrollFor(this.list.index, this.listScroll, 11, 2);
+    this.listScroll = scrollFor(this.list.index, this.listScroll, ITEM_ROWS, 2);
     if (cancelPressed()) {
       Sound.sfx('cancel');
       this.mode = 'main';
@@ -162,7 +165,7 @@ export class MenuScene implements Scene {
     const ch = this.caster();
     const skills = (ch?.skills ?? []).map((id) => SKILLS[id]).filter(Boolean);
     this.list.update(skills.length);
-    this.listScroll = scrollFor(this.list.index, this.listScroll, 8, 2);
+    this.listScroll = scrollFor(this.list.index, this.listScroll, SKILL_ROWS, 2);
     if (cancelPressed()) {
       Sound.sfx('cancel');
       this.mode = 'pickChar';
@@ -272,7 +275,7 @@ export class MenuScene implements Scene {
     const slot = EQUIP_SLOTS[this.slotCursor.index];
     const choices = this.equipChoices(ch, slot);
     this.pickCursor.update(choices.length);
-    this.pickScroll = scrollFor(this.pickCursor.index, this.pickScroll, 7);
+    this.pickScroll = scrollFor(this.pickCursor.index, this.pickScroll, PICK_ROWS);
     if (cancelPressed()) {
       Sound.sfx('cancel');
       this.mode = 'equip';
@@ -317,75 +320,85 @@ export class MenuScene implements Scene {
     }
     if (this.toast) {
       const w = measureText(this.toast.text) + 24;
-      drawWindow(ctx, Math.floor((GAME_WIDTH - w) / 2), GAME_HEIGHT - 30, w, 22);
-      drawText(ctx, this.toast.text, GAME_WIDTH / 2, GAME_HEIGHT - 23, COLORS.text, { align: 'center' });
+      drawWindow(ctx, Math.floor((GAME_WIDTH - w) / 2), GAME_HEIGHT - 28, w, 22);
+      drawText(ctx, this.toast.text, GAME_WIDTH / 2, GAME_HEIGHT - 21, COLORS.text, { align: 'center' });
     }
   }
 
-  private drawMember(ctx: CanvasRenderingContext2D, ch: Character, x: number, y: number) {
+  /** Portrait plus level, HP, MP and EXP, 48px tall. */
+  private drawMember(ctx: CanvasRenderingContext2D, ch: Character, x: number, y: number, gaugeW = 60) {
     const st = effectiveStats(ch);
-    const sprite = ch.hp > 0 ? getSheet(ch.look).frames[Direction.Down][0] : getSheet(ch.look).ko;
-    ctx.drawImage(sprite, x, ch.hp > 0 ? y + 4 : y + 12);
-    const tx = x + 24;
-    drawText(ctx, ch.name, tx, y + 2, ch.hp > 0 ? COLORS.text : COLORS.hpCrit);
-    drawText(ctx, `Lv ${ch.level}`, tx + 76, y + 2, COLORS.highlight, { align: 'right' });
-    drawText(ctx, ch.characterClass, tx + 82, y + 2, COLORS.dim);
+    drawPortrait(ctx, getFace(ch.look), x, y);
+    if (ch.hp <= 0) {
+      ctx.fillStyle = 'rgba(80,0,0,0.45)';
+      ctx.fillRect(x + 5, y + 5, 38, 38);
+    }
+    const tx = x + 54;
+    const vx = tx + 74;
+    const gx = vx + 6;
+    drawText(ctx, ch.name, tx, y + 3, ch.hp > 0 ? COLORS.text : COLORS.hpCrit);
+    drawText(ctx, `Lv ${ch.level}`, vx, y + 3, COLORS.highlight, { align: 'right' });
+    drawText(ctx, ch.characterClass, gx, y + 3, COLORS.dim);
     drawText(ctx, 'HP', tx, y + 15, COLORS.dim);
-    drawText(ctx, `${ch.hp}/${st.maxHp}`, tx + 76, y + 15, COLORS.text, { align: 'right' });
-    drawGauge(ctx, tx + 82, y + 17, 46, ch.hp / st.maxHp, 'hp');
-    drawText(ctx, 'MP', tx, y + 27, COLORS.dim);
-    drawText(ctx, `${ch.mp}/${st.maxMp}`, tx + 76, y + 27, COLORS.text, { align: 'right' });
-    drawGauge(ctx, tx + 82, y + 29, 46, st.maxMp ? ch.mp / st.maxMp : 0, 'mp');
-    drawText(ctx, 'Next', tx, y + 39, COLORS.dim);
+    drawText(ctx, `${ch.hp}/${st.maxHp}`, vx, y + 15, COLORS.text, { align: 'right' });
+    drawGauge(ctx, gx, y + 17, gaugeW, ch.hp / st.maxHp, 'hp');
+    drawText(ctx, 'MP', tx, y + 26, COLORS.dim);
+    drawText(ctx, `${ch.mp}/${st.maxMp}`, vx, y + 26, COLORS.text, { align: 'right' });
+    drawGauge(ctx, gx, y + 28, gaugeW, st.maxMp ? ch.mp / st.maxMp : 0, 'mp');
+    drawText(ctx, 'Next', tx, y + 37, COLORS.dim);
     const need = expToNext(ch.level);
-    drawText(ctx, String(need - ch.exp), tx + 76, y + 39, COLORS.text, { align: 'right' });
-    drawGauge(ctx, tx + 82, y + 41, 46, ch.exp / need, 'exp');
+    drawText(ctx, String(need - ch.exp), vx, y + 37, COLORS.text, { align: 'right' });
+    drawGauge(ctx, gx, y + 39, gaugeW, ch.exp / need, 'exp');
   }
 
   private renderMain(ctx: CanvasRenderingContext2D) {
     const s = game();
-    drawWindow(ctx, 0, 0, 184, 188);
-    this.party.forEach((ch, i) => this.drawMember(ctx, ch, 12, 8 + i * 58));
-    if (this.mode === 'pickChar') drawCursor(ctx, 12, 20 + this.charCursor.index * 58);
+    drawWindow(ctx, 4, 4, 224, 152);
+    this.party.forEach((ch, i) => {
+      const y = 8 + i * 48;
+      if (this.mode === 'pickChar' && i === this.charCursor.index) drawSelection(ctx, 10, y + 1, 212, 46);
+      this.drawMember(ctx, ch, 20, y);
+    });
+    if (this.mode === 'pickChar') drawCursor(ctx, 19, 32 + this.charCursor.index * 48);
 
-    drawWindow(ctx, 184, 0, 72, 86);
-    COMMANDS.forEach((c, i) => drawText(ctx, c, 202, 9 + i * 14));
-    drawCursor(ctx, 200, 12 + this.cmd.index * 14, this.mode !== 'main');
+    drawWindow(ctx, 230, 4, 86, 86);
+    COMMANDS.forEach((c, i) => drawText(ctx, c, 254, 12 + i * 14, i === this.cmd.index && this.mode === 'main' ? COLORS.highlight : COLORS.text));
+    drawCursor(ctx, 251, 15 + this.cmd.index * 14, this.mode !== 'main');
 
-    drawWindow(ctx, 184, 86, 72, 102);
-    drawText(ctx, 'Time', 194, 96, COLORS.dim);
-    drawText(ctx, formatTime(s.playTime), 246, 108, COLORS.text, { align: 'right' });
-    drawText(ctx, 'Gold', 194, 126, COLORS.dim);
-    drawIcon(ctx, 'coin', 194, 140);
-    drawText(ctx, String(s.gold), 246, 138, COLORS.gold, { align: 'right' });
-    drawText(ctx, 'Party', 194, 156, COLORS.dim);
-    drawText(ctx, `${s.party.length}/3`, 246, 168, COLORS.text, { align: 'right' });
+    drawWindow(ctx, 230, 92, 86, 64);
+    drawText(ctx, 'Time', 240, 100, COLORS.dim);
+    drawText(ctx, formatTime(s.playTime), 306, 112, COLORS.text, { align: 'right' });
+    drawText(ctx, 'Gold', 240, 126, COLORS.dim);
+    drawIcon(ctx, 'coin', 236, 133);
+    drawText(ctx, String(s.gold), 306, 138, COLORS.gold, { align: 'right' });
 
-    drawWindow(ctx, 0, 188, GAME_WIDTH, 36);
-    drawText(ctx, MAPS[s.mapId]?.name ?? '', 12, 194, COLORS.highlight);
+    drawWindow(ctx, 4, 158, 312, 20);
+    const place = MAPS[s.mapId]?.name ?? '';
+    drawText(ctx, place, 12, 164, COLORS.highlight);
     const hint = this.mode === 'pickChar' ? 'Choose a party member.' : objectiveText();
-    drawText(ctx, hint, 12, 206, COLORS.dim);
+    drawText(ctx, hint, 308, 164, COLORS.dim, { align: 'right' });
   }
 
   private renderItems(ctx: CanvasRenderingContext2D) {
     const items = this.items();
     const sel = items[this.list.index];
-    drawWindow(ctx, 0, 0, GAME_WIDTH, 24);
-    drawText(ctx, sel ? sel.item.description : 'Your bag is empty.', 10, 8);
-    drawWindow(ctx, 0, 24, GAME_WIDTH, GAME_HEIGHT - 24);
+    drawWindow(ctx, 0, 0, GAME_WIDTH, 22);
+    drawText(ctx, sel ? sel.item.description : 'Your bag is empty.', 10, 7);
+    drawWindow(ctx, 0, 22, GAME_WIDTH, GAME_HEIGHT - 22);
     items.forEach((e, i) => {
       const row = Math.floor(i / 2) - this.listScroll;
-      if (row < 0 || row >= 11) return;
-      const x = 20 + (i % 2) * 120;
-      const y = 34 + row * 16;
+      if (row < 0 || row >= ITEM_ROWS) return;
+      const x = 24 + (i % 2) * 150;
+      const y = 32 + row * 17;
       const usable = this.fieldUsable(e.item);
-      drawIcon(ctx, e.item.icon, x, y);
-      drawText(ctx, e.item.name, x + 11, y, usable ? COLORS.text : e.item.kind === 'key' ? COLORS.highlight : COLORS.dim);
-      if (e.item.kind !== 'key') drawText(ctx, `${e.quantity}`, x + 104, y, COLORS.dim, { align: 'right' });
+      if (i === this.list.index) drawSelection(ctx, x - 4, y - 3, 140, 15);
+      drawIcon(ctx, e.item.icon, x, y - 4);
+      drawText(ctx, e.item.name, x + 19, y, usable ? COLORS.text : e.item.kind === 'key' ? COLORS.highlight : COLORS.dim);
+      if (e.item.kind !== 'key') drawText(ctx, `${e.quantity}`, x + 132, y, COLORS.dim, { align: 'right' });
     });
     if (items.length) {
       const row = Math.floor(this.list.index / 2) - this.listScroll;
-      drawCursor(ctx, 18 + (this.list.index % 2) * 120, 37 + row * 16, this.mode !== 'items');
+      drawCursor(ctx, 18 + (this.list.index % 2) * 150, 35 + row * 17, this.mode !== 'items');
     }
   }
 
@@ -394,42 +407,46 @@ export class MenuScene implements Scene {
     if (!ch) return;
     const skills = ch.skills.map((id) => SKILLS[id]).filter(Boolean);
     const sel = skills[this.list.index];
-    drawWindow(ctx, 0, 0, GAME_WIDTH, 24);
-    drawText(ctx, sel ? sel.description : `${ch.name} hasn't learned anything yet.`, 10, 8);
-    drawWindow(ctx, 0, 24, GAME_WIDTH, 60);
-    this.drawMember(ctx, ch, 12, 30);
-    drawWindow(ctx, 0, 84, GAME_WIDTH, GAME_HEIGHT - 84);
+    drawWindow(ctx, 0, 0, GAME_WIDTH, 22);
+    drawText(ctx, sel ? sel.description : `${ch.name} hasn't learned anything yet.`, 10, 7);
+    drawWindow(ctx, 0, 22, GAME_WIDTH, 60);
+    this.drawMember(ctx, ch, 10, 28, 100);
+    drawWindow(ctx, 0, 82, GAME_WIDTH, GAME_HEIGHT - 82);
     skills.forEach((sk, i) => {
       const row = Math.floor(i / 2) - this.listScroll;
-      if (row < 0 || row >= 8) return;
-      const x = 20 + (i % 2) * 120;
-      const y = 94 + row * 15;
+      if (row < 0 || row >= SKILL_ROWS) return;
+      const x = 24 + (i % 2) * 150;
+      const y = 92 + row * 16;
       const ok = sk.field && ch.mp >= sk.mpCost;
+      if (i === this.list.index) drawSelection(ctx, x - 4, y - 3, 140, 15);
       drawText(ctx, sk.name, x, y, ok ? COLORS.text : COLORS.dim);
-      drawText(ctx, String(sk.mpCost), x + 104, y, ok ? COLORS.mp : COLORS.dim, { align: 'right' });
+      drawText(ctx, `${sk.mpCost} MP`, x + 132, y, ok ? COLORS.mp : COLORS.dim, { align: 'right' });
     });
     if (skills.length) {
       const row = Math.floor(this.list.index / 2) - this.listScroll;
-      drawCursor(ctx, 18 + (this.list.index % 2) * 120, 97 + row * 15, this.mode !== 'skills');
+      drawCursor(ctx, 18 + (this.list.index % 2) * 150, 95 + row * 16, this.mode !== 'skills');
     }
   }
 
   private renderTarget(ctx: CanvasRenderingContext2D) {
-    const x = 96;
-    const y = 40;
+    const w = 170;
+    const x = Math.floor((GAME_WIDTH - w) / 2);
     const h = this.party.length * 40 + 12;
-    drawWindow(ctx, x, y, 152, h);
+    const y = Math.floor((GAME_HEIGHT - h) / 2);
+    drawWindow(ctx, x, y, w, h);
     const all = this.using?.kind === 'skill' && this.using.skill.target === 'allAllies';
     this.party.forEach((ch, i) => {
       const st = effectiveStats(ch);
       const ry = y + 8 + i * 40;
-      const sprite = ch.hp > 0 ? getSheet(ch.look).frames[Direction.Down][0] : getSheet(ch.look).ko;
-      ctx.drawImage(sprite, x + 22, ch.hp > 0 ? ry : ry + 8);
-      drawText(ctx, ch.name, x + 46, ry + 2, ch.hp > 0 ? COLORS.text : COLORS.hpCrit);
-      drawText(ctx, `${ch.hp}/${st.maxHp}`, x + 140, ry + 2, COLORS.text, { align: 'right' });
-      drawGauge(ctx, x + 46, ry + 13, 94, ch.hp / st.maxHp, 'hp');
-      drawText(ctx, `MP ${ch.mp}/${st.maxMp}`, x + 140, ry + 19, COLORS.mp, { align: 'right' });
-      if (all || i === this.targetCursor.index) drawCursor(ctx, x + 20, ry + 10, all);
+      const sheet = getSheet(ch.look);
+      const sprite = ch.hp > 0 ? sheet.frames[Direction.Down][0] : sheet.ko;
+      if (all || i === this.targetCursor.index) drawSelection(ctx, x + 6, ry - 2, w - 12, 36);
+      ctx.drawImage(sprite, x + 24, ry + 8);
+      drawText(ctx, ch.name, x + 48, ry + 2, ch.hp > 0 ? COLORS.text : COLORS.hpCrit);
+      drawText(ctx, `${ch.hp}/${st.maxHp}`, x + w - 12, ry + 2, COLORS.text, { align: 'right' });
+      drawGauge(ctx, x + 48, ry + 13, w - 60, ch.hp / st.maxHp, 'hp');
+      drawText(ctx, `MP ${ch.mp}/${st.maxMp}`, x + w - 12, ry + 21, COLORS.mp, { align: 'right' });
+      if (all || i === this.targetCursor.index) drawCursor(ctx, x + 21, ry + 14, all);
     });
   }
 
@@ -442,63 +459,65 @@ export class MenuScene implements Scene {
     const current = effectiveStats(ch);
     const preview = this.mode === 'equipPick' ? previewEquip(ch, slot, hovered ? hovered.id : null) : null;
 
-    drawWindow(ctx, 0, 0, GAME_WIDTH, 34);
-    ctx.drawImage(getSheet(ch.look).frames[Direction.Down][0], 10, 5);
-    drawText(ctx, ch.name, 32, 7);
-    drawText(ctx, `Lv ${ch.level} ${ch.characterClass}`, 32, 19, COLORS.dim);
-    drawText(ctx, 'Equipment', GAME_WIDTH - 12, 13, COLORS.highlight, { align: 'right' });
+    drawWindow(ctx, 0, 0, GAME_WIDTH, 26);
+    ctx.drawImage(getSheet(ch.look).frames[Direction.Down][0], 8, 5);
+    drawText(ctx, ch.name, 30, 9);
+    drawText(ctx, `Lv ${ch.level} ${ch.characterClass}`, 34 + measureText(ch.name), 9, COLORS.dim);
+    drawText(ctx, 'Equipment', GAME_WIDTH - 12, 9, COLORS.highlight, { align: 'right' });
 
-    drawWindow(ctx, 0, 34, 148, 52);
+    drawWindow(ctx, 0, 26, 170, 58);
     EQUIP_SLOTS.forEach((sl, i) => {
-      const y = 42 + i * 13;
+      const y = 34 + i * 16;
       const id = ch.equipment[sl];
       const item = id ? ITEMS[id] : undefined;
-      drawText(ctx, SLOT_LABEL[sl], 20, y, COLORS.dim);
-      if (item) drawIcon(ctx, item.icon, 66, y);
-      drawText(ctx, item ? item.name : '-', 77, y, item ? COLORS.text : COLORS.disabled);
+      if (this.mode === 'equip' && i === this.slotCursor.index) drawSelection(ctx, 16, y - 3, 148, 15);
+      drawText(ctx, SLOT_LABEL[sl], 22, y, COLORS.dim);
+      if (item) drawIcon(ctx, item.icon, 70, y - 4);
+      drawText(ctx, item ? item.name : '-', 88, y, item ? COLORS.text : COLORS.disabled);
     });
-    drawCursor(ctx, 18, 45 + this.slotCursor.index * 13, this.mode !== 'equip');
+    drawCursor(ctx, 19, 37 + this.slotCursor.index * 16, this.mode !== 'equip');
 
-    drawWindow(ctx, 148, 34, 108, 152);
+    drawWindow(ctx, 170, 26, 150, 130);
     STAT_KEYS.forEach((k, i) => {
-      const y = 44 + i * 23;
-      drawText(ctx, STAT_LABELS[k], 158, y, COLORS.dim);
-      drawText(ctx, String(current[k]), 196, y + 10, COLORS.text, { align: 'right' });
+      const y = 36 + i * 19;
+      drawText(ctx, STAT_LABELS[k], 180, y, COLORS.dim);
+      drawText(ctx, String(current[k]), 252, y, COLORS.text, { align: 'right' });
       if (preview) {
         const diff = preview[k] - current[k];
         const col = diff > 0 ? COLORS.good : diff < 0 ? COLORS.bad : COLORS.text;
-        drawText(ctx, '→', 204, y + 10, COLORS.dim);
-        drawText(ctx, String(preview[k]), 244, y + 10, col, { align: 'right' });
+        drawText(ctx, '→', 260, y, COLORS.dim);
+        drawText(ctx, String(preview[k]), 306, y, col, { align: 'right' });
       }
     });
 
-    drawWindow(ctx, 0, 86, 148, 100);
+    drawWindow(ctx, 0, 84, 170, 72);
     if (this.mode === 'equipPick') {
       choices.forEach((it, i) => {
         const row = i - this.pickScroll;
-        if (row < 0 || row >= 7) return;
-        const y = 94 + row * 12;
+        if (row < 0 || row >= PICK_ROWS) return;
+        const y = 92 + row * 15;
+        if (i === this.pickCursor.index) drawSelection(ctx, 16, y - 3, 148, 14);
         if (it) {
-          drawIcon(ctx, it.icon, 20, y);
-          drawText(ctx, it.name, 32, y);
-          drawText(ctx, String(game().countItem(it.id)), 138, y, COLORS.dim, { align: 'right' });
-        } else drawText(ctx, '(Remove)', 20, y, COLORS.dim);
+          drawIcon(ctx, it.icon, 20, y - 4);
+          drawText(ctx, it.name, 38, y);
+          drawText(ctx, String(game().countItem(it.id)), 158, y, COLORS.dim, { align: 'right' });
+        } else drawText(ctx, '(Remove)', 22, y, COLORS.dim);
       });
-      drawCursor(ctx, 18, 97 + (this.pickCursor.index - this.pickScroll) * 12);
+      drawCursor(ctx, 18, 95 + (this.pickCursor.index - this.pickScroll) * 15);
     } else {
-      wrapText(`Pick a slot to change ${ch.name}'s gear. Unequipped items go back into your bag.`, 124).forEach((l, i) =>
-        drawText(ctx, l, 12, 96 + i * 12, COLORS.dim),
+      wrapText(`Pick a slot to change ${ch.name}'s gear. Unequipped items go back into your bag.`, 148).forEach((l, i) =>
+        drawText(ctx, l, 12, 93 + i * 12, COLORS.dim),
       );
     }
 
-    drawWindow(ctx, 0, 186, GAME_WIDTH, 38);
+    drawWindow(ctx, 0, 156, GAME_WIDTH, 24);
     const desc =
       this.mode === 'equipPick'
         ? hovered
           ? hovered.description
           : 'Take this slot off.'
         : (ITEMS[ch.equipment[slot] ?? '']?.description ?? 'Nothing equipped.');
-    wrapText(desc, 236).slice(0, 2).forEach((l, i) => drawText(ctx, l, 10, 193 + i * 12));
+    drawText(ctx, wrapText(desc, 300)[0] ?? '', 10, 163);
   }
 }
 
@@ -506,7 +525,7 @@ export class MenuScene implements Scene {
 export function objectiveText(): string {
   const f = game().flags;
   if (!f.quest_accepted) return 'Talk to Elder Rowan in the plaza.';
-  if (f.boss_defeated) return 'Bring the crystal back to Elder Rowan.';
+  if (f.boss_defeated) return 'Bring the crystal back to the elder.';
   if (!f.lira_joined) return 'Recruit Lira, then head east.';
-  return 'Reach Shadowfang Cave, east of the forest.';
+  return 'Head east to Shadowfang Cave.';
 }

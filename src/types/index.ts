@@ -220,15 +220,15 @@ export interface ExitDef {
   lockedText?: string;
 }
 
+export type BuildingStyle = 'cottage' | 'hall' | 'lodge' | 'shop';
+
+/** A 4x3 house from the tileset. `w`/`h` are its footprint; the door is in its second column. */
 export interface BuildingDef {
   x: number;
   y: number;
   w: number;
   h: number;
-  roof: string;
-  door: number;
-  sign?: 'shop' | 'inn';
-  chimney?: boolean;
+  style: BuildingStyle;
 }
 
 export interface Rect {

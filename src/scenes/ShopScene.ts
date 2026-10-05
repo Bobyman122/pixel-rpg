@@ -4,9 +4,9 @@ import { Sound } from '@/engine/audio';
 import { GAME_HEIGHT, GAME_WIDTH } from '@/engine/constants';
 import { Input } from '@/engine/InputManager';
 import { SceneManager, type Scene } from '@/engine/SceneManager';
-import { getSheet } from '@/gfx/characters';
+import { getFace, getSheet } from '@/gfx/characters';
 import { drawText, wrapText } from '@/gfx/font';
-import { COLORS, drawCursor, drawIcon, drawWindow } from '@/gfx/ui';
+import { COLORS, drawCursor, drawIcon, drawSelection, drawWindow } from '@/gfx/ui';
 import { game } from '@/store/gameStore';
 import { MAX_STACK, sellPrice, sortedInventory } from '@/systems/inventory';
 import { canEquip, effectiveStats, previewEquip, STAT_KEYS } from '@/systems/stats';
@@ -16,7 +16,7 @@ import { cancelPressed, confirmPressed, ListCursor, scrollFor } from './common';
 type Mode = 'cmd' | 'buy' | 'sell' | 'qty';
 
 const SHORT: Record<StatKey, string> = { maxHp: 'HP', maxMp: 'MP', atk: 'ATK', def: 'DEF', mag: 'MAG', spd: 'SPD' };
-const VISIBLE = 9;
+const VISIBLE = 6;
 
 export class ShopScene implements Scene {
   readonly opaque = true;
@@ -144,21 +144,23 @@ export class ShopScene implements Scene {
 
   render(ctx: CanvasRenderingContext2D) {
     const s = game();
-    ctx.fillStyle = '#05050f';
+    ctx.fillStyle = '#120c0a';
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    drawWindow(ctx, 0, 0, 168, 24);
-    drawText(ctx, this.shop.name, 12, 8, COLORS.highlight);
-    drawWindow(ctx, 168, 0, 88, 24);
-    drawIcon(ctx, 'coin', 178, 10);
-    drawText(ctx, `${s.gold}`, 246, 8, COLORS.gold, { align: 'right' });
+    drawWindow(ctx, 0, 0, 212, 22);
+    drawText(ctx, this.shop.name, 12, 7, COLORS.highlight);
+    drawWindow(ctx, 212, 0, 108, 22);
+    drawIcon(ctx, 'coin', 218, 3);
+    drawText(ctx, `${s.gold}`, 308, 7, COLORS.gold, { align: 'right' });
 
-    drawWindow(ctx, 0, 24, GAME_WIDTH, 22);
-    ['Buy', 'Sell', 'Leave'].forEach((c, i) => drawText(ctx, c, 30 + i * 80, 31, this.mode === 'cmd' || i === this.cmd.index ? COLORS.text : COLORS.dim));
-    drawCursor(ctx, 28 + this.cmd.index * 80, 34, this.mode !== 'cmd');
+    drawWindow(ctx, 0, 22, GAME_WIDTH, 20);
+    ['Buy', 'Sell', 'Leave'].forEach((c, i) =>
+      drawText(ctx, c, 40 + i * 90, 28, i === this.cmd.index ? COLORS.highlight : this.mode === 'cmd' ? COLORS.text : COLORS.dim),
+    );
+    drawCursor(ctx, 37 + this.cmd.index * 90, 31, this.mode !== 'cmd');
 
     // item list
-    drawWindow(ctx, 0, 46, 150, 134);
+    drawWindow(ctx, 0, 42, 190, 92);
     if (this.mode !== 'cmd') {
       const selling = this.mode === 'sell' || (this.mode === 'qty' && this.qtyFrom === 'sell');
       const listRows = selling
@@ -167,35 +169,36 @@ export class ShopScene implements Scene {
       listRows.forEach((r, i) => {
         const row = i - this.scroll;
         if (row < 0 || row >= VISIBLE) return;
-        const y = 55 + row * 13;
+        const y = 49 + row * 14;
         const affordable = selling || s.gold >= r.price;
-        drawIcon(ctx, r.item.icon, 18, y);
-        drawText(ctx, r.item.name, 30, y, affordable ? COLORS.text : COLORS.disabled);
-        drawText(ctx, `${r.price}`, 142, y, affordable ? COLORS.gold : COLORS.disabled, { align: 'right' });
+        if (i === this.list.index) drawSelection(ctx, 18, y - 3, 166, 14);
+        drawIcon(ctx, r.item.icon, 22, y - 4);
+        drawText(ctx, r.item.name, 40, y, affordable ? COLORS.text : COLORS.disabled);
+        drawText(ctx, `${r.price}`, 180, y, affordable ? COLORS.gold : COLORS.disabled, { align: 'right' });
       });
-      if (listRows.length === 0) drawText(ctx, 'Nothing to sell.', 75, 100, COLORS.dim, { align: 'center' });
-      else drawCursor(ctx, 16, 58 + (this.list.index - this.scroll) * 13, this.mode === 'qty');
+      if (listRows.length === 0) drawText(ctx, 'Nothing to sell.', 95, 86, COLORS.dim, { align: 'center' });
+      else drawCursor(ctx, 20, 52 + (this.list.index - this.scroll) * 14, this.mode === 'qty');
     } else {
-      wrapText('Bram polishes a sword and grins at you over the counter.', 126).forEach((l, i) => drawText(ctx, l, 12, 56 + i * 12, COLORS.dim));
+      wrapText('Bram polishes a sword and grins at you over the counter.', 166).forEach((l, i) => drawText(ctx, l, 12, 52 + i * 12, COLORS.dim));
     }
 
     // info panel
-    drawWindow(ctx, 150, 46, 106, 134);
+    drawWindow(ctx, 190, 42, 130, 92);
     const item = this.current();
     if (item) {
-      drawText(ctx, 'In bag', 160, 54, COLORS.dim);
-      drawText(ctx, String(s.countItem(item.id)), 246, 54, COLORS.text, { align: 'right' });
+      drawText(ctx, 'In bag', 200, 50, COLORS.dim);
+      drawText(ctx, String(s.countItem(item.id)), 310, 50, COLORS.text, { align: 'right' });
       if (item.slot) {
         s.party.forEach((ch, i) => {
-          const y = 72 + i * 34;
-          ctx.drawImage(getSheet(ch.look).frames[Direction.Down][0], 158, y);
-          drawText(ctx, ch.name, 178, y + 1);
+          const y = 64 + i * 24;
+          ctx.drawImage(getSheet(ch.look).frames[Direction.Down][0], 198, y + 2);
+          drawText(ctx, ch.name, 218, y);
           if (!canEquip(item, ch)) {
-            drawText(ctx, "Can't use", 178, y + 13, COLORS.disabled);
+            drawText(ctx, "Can't use", 218, y + 10, COLORS.disabled);
             return;
           }
           if (ch.equipment[item.slot!] === item.id) {
-            drawText(ctx, 'Equipped', 178, y + 13, COLORS.highlight);
+            drawText(ctx, 'Equipped', 218, y + 10, COLORS.highlight);
             return;
           }
           const now = effectiveStats(ch);
@@ -204,28 +207,32 @@ export class ShopScene implements Scene {
             .filter((x) => x.d !== 0)
             .sort((a, b) => Math.abs(b.d) - Math.abs(a.d))
             .slice(0, 2);
-          if (!diffs.length) drawText(ctx, 'No change', 178, y + 13, COLORS.dim);
+          if (!diffs.length) drawText(ctx, 'No change', 218, y + 10, COLORS.dim);
           diffs.forEach((x, j) =>
-            drawText(ctx, `${SHORT[x.k]} ${x.d > 0 ? '+' : ''}${x.d}`, 178 + j * 38, y + 13, x.d > 0 ? COLORS.good : COLORS.bad),
+            drawText(ctx, `${SHORT[x.k]} ${x.d > 0 ? '+' : ''}${x.d}`, 218 + j * 44, y + 10, x.d > 0 ? COLORS.good : COLORS.bad),
           );
         });
       } else if (item.effect) {
-        wrapText(item.description, 88).forEach((l, i) => drawText(ctx, l, 160, 72 + i * 12));
+        wrapText(item.description, 110).forEach((l, i) => drawText(ctx, l, 200, 66 + i * 12));
       }
     }
 
-    drawWindow(ctx, 0, 180, GAME_WIDTH, 44);
+    // Bram has the last word
+    drawWindow(ctx, 0, 134, GAME_WIDTH, 46);
+    ctx.drawImage(getFace('merchant'), 7, 138);
     const desc = item && this.mode !== 'cmd' ? item.description : '';
-    const lines = [...wrapText(this.message, 236).slice(0, 1), ...(desc ? wrapText(desc, 236).slice(0, 1) : [])];
-    lines.forEach((l, i) => drawText(ctx, l, 10, 188 + i * 13, i === 0 ? COLORS.text : COLORS.dim));
+    const lines = [...wrapText(this.message, 256).slice(0, 1), ...(desc ? wrapText(desc, 256).slice(0, 1) : [])];
+    lines.forEach((l, i) => drawText(ctx, l, 52, 144 + i * 12, i === 0 ? COLORS.text : COLORS.dim));
 
     if (this.mode === 'qty' && item) {
       const price = this.qtyFrom === 'buy' ? item.price : sellPrice(item);
-      drawWindow(ctx, 56, 90, 144, 50);
-      drawText(ctx, this.qtyFrom === 'buy' ? 'How many?' : 'Sell how many?', 128, 98, COLORS.text, { align: 'center' });
-      drawText(ctx, `<  ${this.qty}  >`, 92, 114, COLORS.highlight, { align: 'center' });
-      drawIcon(ctx, 'coin', 132, 116);
-      drawText(ctx, `${price * this.qty}`, 188, 114, COLORS.gold, { align: 'right' });
+      const w = 150;
+      const x = Math.floor((GAME_WIDTH - w) / 2);
+      drawWindow(ctx, x, 62, w, 50);
+      drawText(ctx, this.qtyFrom === 'buy' ? 'How many?' : 'Sell how many?', GAME_WIDTH / 2, 70, COLORS.text, { align: 'center' });
+      drawText(ctx, `<  ${this.qty}  >`, x + 38, 88, COLORS.highlight, { align: 'center' });
+      drawIcon(ctx, 'coin', x + 78, 84);
+      drawText(ctx, `${price * this.qty}`, x + w - 12, 88, COLORS.gold, { align: 'right' });
     }
   }
 }

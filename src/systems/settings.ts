@@ -13,7 +13,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  windowTheme: 'azure',
+  windowTheme: 'wood',
   textSpeed: 'normal',
   battleSpeed: 'normal',
   sfx: true,
@@ -32,7 +32,7 @@ export function loadSettings(): Settings {
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<Settings>;
     return {
-      windowTheme: THEME_ORDER.includes(parsed.windowTheme as WindowTheme) ? (parsed.windowTheme as WindowTheme) : 'azure',
+      windowTheme: THEME_ORDER.includes(parsed.windowTheme as WindowTheme) ? (parsed.windowTheme as WindowTheme) : 'wood',
       textSpeed: ['slow', 'normal', 'fast'].includes(parsed.textSpeed as string) ? (parsed.textSpeed as TextSpeed) : 'normal',
       battleSpeed: parsed.battleSpeed === 'fast' ? 'fast' : 'normal',
       sfx: parsed.sfx !== false,

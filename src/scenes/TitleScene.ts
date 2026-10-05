@@ -3,12 +3,14 @@ import { GAME_HEIGHT, GAME_WIDTH } from '@/engine/constants';
 import { Clock } from '@/engine/GameLoop';
 import { SceneManager, type Scene } from '@/engine/SceneManager';
 import { session } from '@/engine/session';
-import { getBigCrystal, getTitleBackground } from '@/gfx/backdrops';
+import { getVillageView } from '@/gfx/backdrops';
 import { hash2 } from '@/gfx/canvas';
+import { drawShadow, getSheet } from '@/gfx/characters';
 import { drawText, renderLogo } from '@/gfx/font';
 import { COLORS, drawCursor, drawWindow } from '@/gfx/ui';
 import { game } from '@/store/gameStore';
 import { hasAnySave, type SaveData } from '@/systems/save';
+import { Direction } from '@/types';
 import { confirmPressed, ListCursor } from './common';
 import { ConfigScene } from './ConfigScene';
 import { DialogueScene } from './DialogueScene';
@@ -19,70 +21,36 @@ const LOGO_COLORS = ['#fffbe0', '#fff0a0', '#ffd860', '#f8b030', '#e88018', '#c0
 
 let logo: HTMLCanvasElement | null = null;
 
-export function drawStars(ctx: CanvasRenderingContext2D, count: number, maxY: number) {
+/** Fireflies drifting over the village at night (title screen). */
+export function drawFireflies(ctx: CanvasRenderingContext2D, count: number) {
   const t = Clock.time;
   for (let i = 0; i < count; i++) {
-    const x = Math.floor(hash2(i, 0, 91) * GAME_WIDTH);
-    const y = Math.floor(hash2(i, 1, 91) * maxY);
-    const tw = Math.sin(t * (1 + hash2(i, 2, 91) * 3) + i);
-    if (tw < -0.6) continue;
-    const bright = hash2(i, 3, 91) > 0.85;
-    ctx.fillStyle = tw > 0.7 ? '#ffffff' : bright ? '#c8d0ff' : '#7c78b8';
-    ctx.fillRect(x, y, 1, 1);
-    if (bright && tw > 0.8) {
-      ctx.fillStyle = '#9890e0';
-      ctx.fillRect(x - 1, y, 1, 1);
-      ctx.fillRect(x + 1, y, 1, 1);
-      ctx.fillRect(x, y - 1, 1, 1);
-      ctx.fillRect(x, y + 1, 1, 1);
+    const x = (hash2(i, 0, 91) * GAME_WIDTH + Math.sin(t * 0.4 + i) * 18 + GAME_WIDTH) % GAME_WIDTH;
+    const y = (hash2(i, 1, 91) * GAME_HEIGHT - t * (3 + hash2(i, 2, 91) * 5) + GAME_HEIGHT * 4) % GAME_HEIGHT;
+    const glow = Math.sin(t * 2.5 + i * 1.7);
+    if (glow < -0.1) continue;
+    ctx.fillStyle = glow > 0.6 ? '#fbffc0' : '#c8f070';
+    ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+    if (glow > 0.6) {
+      ctx.globalAlpha = 0.35;
+      ctx.fillRect(Math.round(x) - 1, Math.round(y), 3, 1);
+      ctx.fillRect(Math.round(x), Math.round(y) - 1, 1, 3);
+      ctx.globalAlpha = 1;
     }
   }
 }
 
-/** The floating crystal with its rays and halo, shared by the title and ending. */
-export function drawCrystal(ctx: CanvasRenderingContext2D, cx: number, cy: number, intensity = 1) {
-  const t = Clock.time;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.globalAlpha = 0.07 * intensity;
-  ctx.fillStyle = '#c8e8ff';
-  for (let i = 0; i < 10; i++) {
-    const a = t * 0.25 + (i / 10) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(a - 0.08) * 160, Math.sin(a - 0.08) * 160);
-    ctx.lineTo(Math.cos(a + 0.08) * 160, Math.sin(a + 0.08) * 160);
-    ctx.fill();
-  }
-  ctx.restore();
-  // stepped halo
-  for (const [r, a] of [
-    [34, 0.06],
-    [26, 0.08],
-    [18, 0.12],
-  ]) {
-    ctx.globalAlpha = a * intensity;
-    ctx.fillStyle = '#88c8ff';
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-  const c = getBigCrystal();
-  const bob = Math.round(Math.sin(t * 1.6) * 3);
-  ctx.drawImage(c, Math.round(cx - c.width / 2), Math.round(cy - c.height / 2 + bob));
-  // sparkles
-  for (let i = 0; i < 5; i++) {
-    const p = (t * 0.7 + i * 0.37) % 1;
-    const a = i * 2.1 + Math.floor(t * 0.7 + i * 0.37) * 1.3;
-    const r = 14 + (i % 3) * 7;
-    const sx = Math.round(cx + Math.cos(a) * r);
-    const sy = Math.round(cy + Math.sin(a) * r * 0.9 + bob);
-    const size = p < 0.5 ? Math.round(p * 6) : Math.round((1 - p) * 6);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(sx - size, sy, size * 2 + 1, 1);
-    ctx.fillRect(sx, sy - size, 1, size * 2 + 1);
-  }
+/** The party standing in the plaza, shared by the title and the ending. */
+export function drawParty(ctx: CanvasRenderingContext2D, looks: string[], cx: number, footY: number, pose: 'stand' | 'cheer') {
+  const gap = 20;
+  looks.forEach((look, i) => {
+    const sheet = getSheet(look);
+    const x = Math.round(cx + (i - (looks.length - 1) / 2) * gap - 8);
+    const hop = pose === 'cheer' ? -Math.abs(Math.round(Math.sin(Clock.time * 5 + i) * 3)) : 0;
+    drawShadow(ctx, x + 8, footY - 1);
+    const frame = pose === 'cheer' ? sheet.cheer : sheet.frames[Direction.Down][0];
+    ctx.drawImage(frame, x, footY - 16 + hop);
+  });
 }
 
 export function startGame(loaded?: SaveData) {
@@ -161,26 +129,34 @@ export class TitleScene implements Scene {
   }
 
   render(ctx: CanvasRenderingContext2D) {
-    ctx.drawImage(getTitleBackground(), 0, 0);
-    drawStars(ctx, 90, 150);
-    drawCrystal(ctx, GAME_WIDTH / 2, 104);
+    ctx.drawImage(getVillageView(), 0, 0);
+    // Night falls over Millbrook.
+    ctx.fillStyle = 'rgba(14,16,52,0.58)';
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    const g = ctx.createLinearGradient(0, 0, 0, 70);
+    g.addColorStop(0, 'rgba(6,6,24,0.75)');
+    g.addColorStop(1, 'rgba(6,6,24,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, GAME_WIDTH, 70);
+    drawFireflies(ctx, 26);
+    drawParty(ctx, ['lira', 'kael', 'finn'], GAME_WIDTH / 2, 112, 'stand');
 
     if (!logo) logo = renderLogo('CRYSTAL QUEST', LOGO_COLORS, '#3a1206', '#0a0414', 3);
     const intro = Math.min(1, this.t / 0.6);
-    const ly = Math.round(18 - (1 - intro) * 30);
+    const ly = Math.round(14 - (1 - intro) * 30);
     ctx.drawImage(logo, Math.round((GAME_WIDTH - logo.width) / 2), ly);
-    drawText(ctx, 'A Tale of Light and Shadow', GAME_WIDTH / 2, ly + 34, '#c8b8f8', { align: 'center' });
+    drawText(ctx, 'A Tale of Light and Shadow', GAME_WIDTH / 2, ly + 34, '#d8d0ff', { align: 'center', shadow: '#0a0414' });
 
     if (this.t < 0.6) return;
     const opts = this.options();
-    const w = 92;
+    const w = 100;
     const x = Math.floor((GAME_WIDTH - w) / 2);
-    const y = 148;
+    const y = 120;
     drawWindow(ctx, x, y, w, 46);
-    opts.forEach((o, i) => drawText(ctx, o.label, x + 28, y + 7 + i * 12, o.enabled ? COLORS.text : COLORS.disabled));
-    drawCursor(ctx, x + 26, y + 10 + this.cursor.index * 12);
+    opts.forEach((o, i) => drawText(ctx, o.label, x + 30, y + 8 + i * 12, !o.enabled ? COLORS.disabled : i === this.cursor.index ? COLORS.highlight : COLORS.text));
+    drawCursor(ctx, x + 27, y + 11 + this.cursor.index * 12);
 
     const hint = session.touch ? 'A: Select    B: Back' : 'Z / Enter: Select    X: Back';
-    drawText(ctx, hint, GAME_WIDTH / 2, GAME_HEIGHT - 11, '#8878b8', { align: 'center' });
+    drawText(ctx, hint, GAME_WIDTH / 2, GAME_HEIGHT - 10, '#a8a0d0', { align: 'center', shadow: '#0a0414' });
   }
 }

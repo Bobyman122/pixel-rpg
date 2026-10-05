@@ -329,6 +329,10 @@ kbd {
   .app.has-touch .topbar {
     display: none;
   }
+  /* The 16:9 screen is wide, so keep the sides clear for the d-pad and buttons. */
+  .app.has-touch .stage {
+    padding: 0 calc(168px + env(safe-area-inset-right)) 0 calc(160px + env(safe-area-inset-left));
+  }
   .app.has-touch .touch-controls {
     position: fixed;
     inset: 0;

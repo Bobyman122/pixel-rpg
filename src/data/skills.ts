@@ -150,10 +150,21 @@ export const SKILLS: Record<string, Skill> = {
   // Enemies
   ooze: { id: 'ooze', name: 'Ooze', description: '', mpCost: 0, kind: 'physical', power: 9, target: 'enemy', fx: 'slime' },
   bite: { id: 'bite', name: 'Bite', description: '', mpCost: 0, kind: 'physical', power: 11, target: 'enemy', fx: 'bite' },
-  howl: { id: 'howl', name: 'Howl', description: '', mpCost: 0, kind: 'magical', power: 7, target: 'allEnemies', fx: 'sonic' },
+  roar: { id: 'roar', name: 'Roar', description: '', mpCost: 0, kind: 'magical', power: 7, target: 'allEnemies', fx: 'sonic' },
   club: { id: 'club', name: 'Club', description: '', mpCost: 0, kind: 'physical', power: 13, target: 'enemy', fx: 'bash' },
   slash: { id: 'slash', name: 'Slash', description: '', mpCost: 0, kind: 'physical', power: 12, target: 'enemy', fx: 'slash' },
-  screech: { id: 'screech', name: 'Screech', description: '', mpCost: 0, kind: 'magical', power: 9, target: 'enemy', fx: 'sonic' },
+  web: { id: 'web', name: 'Web Spit', description: '', mpCost: 0, kind: 'magical', power: 9, target: 'enemy', fx: 'smoke' },
+  sting: {
+    id: 'sting',
+    name: 'Sting',
+    description: '',
+    mpCost: 0,
+    kind: 'physical',
+    power: 8,
+    target: 'enemy',
+    fx: 'claw',
+    status: { type: 'poison', chance: 0.35, turns: 3, value: 6 },
+  },
   venom_bite: {
     id: 'venom_bite',
     name: 'Venom Bite',

@@ -1,4 +1,4 @@
-// Native resolution of the game, matching the SNES output (256x224).
-export const GAME_WIDTH = 256;
-export const GAME_HEIGHT = 224;
+// Native resolution: 16:9, the size the Ninja Adventure art is drawn for.
+export const GAME_WIDTH = 320;
+export const GAME_HEIGHT = 180;
 export const TILE = 16;

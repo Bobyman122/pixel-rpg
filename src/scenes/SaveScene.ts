@@ -3,7 +3,7 @@ import { GAME_HEIGHT, GAME_WIDTH } from '@/engine/constants';
 import { SceneManager, type Scene } from '@/engine/SceneManager';
 import { getSheet } from '@/gfx/characters';
 import { drawText } from '@/gfx/font';
-import { COLORS, drawCursor, drawWindow } from '@/gfx/ui';
+import { COLORS, drawCursor, drawSelection, drawWindow } from '@/gfx/ui';
 import { game } from '@/store/gameStore';
 import { formatTime, listSaves, readSave, SAVE_SLOTS, writeSave, type SaveData, type SaveSummary } from '@/systems/save';
 import { Direction } from '@/types';
@@ -81,40 +81,43 @@ export class SaveScene implements Scene {
   }
 
   render(ctx: CanvasRenderingContext2D) {
-    ctx.fillStyle = '#05050f';
+    ctx.fillStyle = '#120c0a';
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    drawWindow(ctx, 0, 0, GAME_WIDTH, 26);
+    drawWindow(ctx, 0, 0, GAME_WIDTH, 22);
     const title = this.note ?? (this.mode === 'save' ? 'Save your progress to which file?' : 'Load which file?');
-    drawText(ctx, title, 12, 9, this.note ? COLORS.highlight : COLORS.text);
+    drawText(ctx, title, 12, 7, this.note ? COLORS.highlight : COLORS.text);
 
     for (let i = 0; i < SAVE_SLOTS; i++) {
-      const y = 28 + i * 64;
-      drawWindow(ctx, 0, y, GAME_WIDTH, 62);
-      drawText(ctx, `File ${i + 1}`, 22, y + 8, COLORS.highlight);
+      const y = 22 + i * 52;
+      drawWindow(ctx, 0, y, GAME_WIDTH, 52);
+      if (i === this.cursor.index) drawSelection(ctx, 6, y + 5, GAME_WIDTH - 12, 42);
+      drawText(ctx, `File ${i + 1}`, 24, y + 8, COLORS.highlight);
       const s = this.slots[i];
       if (!s) {
-        drawText(ctx, '- Empty -', GAME_WIDTH / 2, y + 26, COLORS.disabled, { align: 'center' });
+        drawText(ctx, '- Empty -', GAME_WIDTH / 2, y + 21, COLORS.disabled, { align: 'center' });
         continue;
       }
-      s.looks.forEach((look, j) => ctx.drawImage(getSheet(look).frames[Direction.Down][0], 22 + j * 20, y + 26));
-      drawText(ctx, `${s.leader}  Lv ${s.level}`, 96, y + 8);
-      drawText(ctx, s.location, 96, y + 22, COLORS.dim);
-      drawText(ctx, `Time ${formatTime(s.playTime)}`, 96, y + 36, COLORS.dim);
+      s.looks.forEach((look, j) => ctx.drawImage(getSheet(look).frames[Direction.Down][0], 24 + j * 20, y + 25));
+      drawText(ctx, `${s.leader}  Lv ${s.level}`, 100, y + 8);
+      drawText(ctx, s.location, 100, y + 20, COLORS.dim);
+      drawText(ctx, `Time ${formatTime(s.playTime)}`, 100, y + 32, COLORS.dim);
       if (s.savedAt) {
         const d = new Date(s.savedAt);
-        drawText(ctx, d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), GAME_WIDTH - 12, y + 8, COLORS.dim, {
+        drawText(ctx, d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), GAME_WIDTH - 14, y + 8, COLORS.dim, {
           align: 'right',
         });
       }
     }
-    drawCursor(ctx, 20, 39 + this.cursor.index * 64, this.confirming);
+    drawCursor(ctx, 21, 11 + 22 + this.cursor.index * 52, this.confirming);
 
     if (this.confirming) {
-      drawWindow(ctx, 70, 80, 116, 54);
-      drawText(ctx, 'Overwrite this file?', 128, 88, COLORS.text, { align: 'center' });
-      drawText(ctx, 'Yes', 100, 104);
-      drawText(ctx, 'No', 100, 116);
-      drawCursor(ctx, 98, 107 + this.yesNo.index * 12);
+      const w = 124;
+      const x = Math.floor((GAME_WIDTH - w) / 2);
+      drawWindow(ctx, x, 62, w, 54);
+      drawText(ctx, 'Overwrite this file?', GAME_WIDTH / 2, 70, COLORS.text, { align: 'center' });
+      drawText(ctx, 'Yes', x + 36, 86, this.yesNo.index === 0 ? COLORS.highlight : COLORS.text);
+      drawText(ctx, 'No', x + 36, 98, this.yesNo.index === 1 ? COLORS.highlight : COLORS.text);
+      drawCursor(ctx, x + 33, 89 + this.yesNo.index * 12);
     }
   }
 }

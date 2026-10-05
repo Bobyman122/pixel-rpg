@@ -1,7 +1,10 @@
+import { PORTRAITS } from '@/data/dialogues';
+import { img } from '@/engine/assets';
 import { Sound } from '@/engine/audio';
 import { GAME_HEIGHT, GAME_WIDTH } from '@/engine/constants';
 import { Input } from '@/engine/InputManager';
 import { SceneManager, type Scene } from '@/engine/SceneManager';
+import { getFace } from '@/gfx/characters';
 import { drawText, LINE_HEIGHT, measureText, wrapText } from '@/gfx/font';
 import { COLORS, drawCursor, drawMoreArrow, drawWindow } from '@/gfx/ui';
 import { game } from '@/store/gameStore';
@@ -18,10 +21,15 @@ export interface DialogueHost {
 /** Actions that end the conversation before they run (they open other screens). */
 const TERMINAL: DialogueAction['type'][] = ['shop', 'battle', 'ending'];
 
-const BOX_W = 240;
-const BOX_H = 56;
-const TEXT_W = BOX_W - 24;
+// The pack's dialogue boxes: 300x58 with a name tab, with or without a portrait slot.
+const BOX_W = 300;
+const BOX_H = 58;
+const TAB_W = 68;
+const PORTRAIT_TEXT_X = 60;
+const PLAIN_TEXT_X = 12;
+const TEXT_RIGHT = 292;
 const LINES_PER_PAGE = 3;
+const INK = '#3a2430';
 
 export class DialogueScene implements Scene {
   private lineId: string | null;
@@ -61,12 +69,20 @@ export class DialogueScene implements Scene {
       this.close();
       return;
     }
-    const wrapped = wrapText(line.text, TEXT_W);
+    const wrapped = wrapText(line.text, TEXT_RIGHT - this.textX(line));
     this.pages = [];
     for (let i = 0; i < wrapped.length; i += LINES_PER_PAGE) this.pages.push(wrapped.slice(i, i + LINES_PER_PAGE));
     this.page = 0;
     this.shown = 0;
     this.choiceCursor.index = 0;
+  }
+
+  private portrait(line: DialogueLine) {
+    return line.speaker ? PORTRAITS[line.speaker] : undefined;
+  }
+
+  private textX(line: DialogueLine) {
+    return this.portrait(line) ? PORTRAIT_TEXT_X : PLAIN_TEXT_X;
   }
 
   private get pageText() {
@@ -143,31 +159,38 @@ export class DialogueScene implements Scene {
     const line = this.line;
     if (!line) return;
     const x = Math.floor((GAME_WIDTH - BOX_W) / 2);
-    const y = this.onTop ? 8 : GAME_HEIGHT - BOX_H - 8;
+    const y = this.onTop ? 4 : GAME_HEIGHT - BOX_H - 4;
+    const look = this.portrait(line);
 
     if (line.speaker) {
-      const nw = measureText(line.speaker) + 16;
-      const ny = this.onTop ? y + BOX_H - 2 : y - 14;
-      drawWindow(ctx, x + 6, ny, nw, 18);
-      drawText(ctx, line.speaker, x + 14, ny + 5, COLORS.highlight);
+      ctx.drawImage(img(look ? 'ui/dialog-face' : 'ui/dialog'), x, y);
+      // Long names get a wider tab: stretch its plain middle section.
+      const nameW = measureText(line.speaker) + 12;
+      if (nameW > TAB_W) ctx.drawImage(img('ui/dialog'), 20, 0, 20, 11, x + 40, y, nameW - 36, 11);
+      if (nameW > TAB_W) ctx.drawImage(img('ui/dialog'), 60, 0, 11, 11, x + nameW + 3, y, 11, 11);
+      drawText(ctx, line.speaker, x + 9, y + 2, '#ffffff', { shadow: '#5a2a1c' });
+      if (look) ctx.drawImage(getFace(look), x + 7, y + 16);
+    } else {
+      // No speaker: same box without the name tab.
+      ctx.drawImage(img('ui/dialog'), 0, 9, BOX_W, BOX_H - 9, x, y + 9, BOX_W, BOX_H - 9);
     }
-    drawWindow(ctx, x, y, BOX_W, BOX_H);
 
+    const tx = x + this.textX(line);
     const text = this.pageText.slice(0, Math.floor(this.shown));
-    text.split('\n').forEach((t, i) => drawText(ctx, t, x + 12, y + 9 + i * LINE_HEIGHT, line.speaker ? COLORS.text : '#e8f0ff'));
+    text.split('\n').forEach((t, i) => drawText(ctx, t, tx, y + 17 + i * LINE_HEIGHT, INK, { shadow: null }));
 
     if (this.waiting) return;
     const choices = this.isLastPage ? line.choices : undefined;
     if (this.pageDone && choices?.length) {
       const cw = Math.max(...choices.map((c) => measureText(c.text))) + 34;
-      const ch = choices.length * LINE_HEIGHT + 12;
-      const cx = x + BOX_W - cw;
-      const cy = this.onTop ? y + BOX_H + 4 : y - ch - (line.speaker ? 16 : 4);
+      const ch = choices.length * LINE_HEIGHT + 14;
+      const cx = x + BOX_W - cw - 4;
+      const cy = this.onTop ? y + BOX_H + 2 : y - ch + 6;
       drawWindow(ctx, cx, cy, cw, ch);
-      choices.forEach((c, i) => drawText(ctx, c.text, cx + 22, cy + 7 + i * LINE_HEIGHT));
-      drawCursor(ctx, cx + 20, cy + 10 + this.choiceCursor.index * LINE_HEIGHT);
+      choices.forEach((c, i) => drawText(ctx, c.text, cx + 22, cy + 8 + i * LINE_HEIGHT, i === this.choiceCursor.index ? COLORS.highlight : COLORS.text));
+      drawCursor(ctx, cx + 19, cy + 11 + this.choiceCursor.index * LINE_HEIGHT);
     } else if (this.pageDone) {
-      drawMoreArrow(ctx, x + BOX_W - 18, y + BOX_H - 10);
+      drawMoreArrow(ctx, x + BOX_W - 16, y + BOX_H - 9);
     }
   }
 }

@@ -4,7 +4,7 @@ import { Input } from '@/engine/InputManager';
 import { SceneManager, type Scene } from '@/engine/SceneManager';
 import { session } from '@/engine/session';
 import { drawText } from '@/gfx/font';
-import { COLORS, drawCursor, drawWindow, THEME_ORDER, WINDOW_THEMES } from '@/gfx/ui';
+import { COLORS, drawCursor, drawSelection, drawWindow, THEME_ORDER, WINDOW_THEMES } from '@/gfx/ui';
 import { game } from '@/store/gameStore';
 import type { Settings } from '@/systems/settings';
 import { cancelPressed, ListCursor } from './common';
@@ -51,7 +51,7 @@ const OPTIONS: Option[] = [
     values: ['Off', 'On'],
     get: (s) => (s.music ? 1 : 0),
     set: (i) => ({ music: i === 1 }),
-    help: 'Background chiptune music.',
+    help: 'The soundtrack on maps and in battle.',
   },
   {
     label: 'CRT Filter',
@@ -87,42 +87,41 @@ export class ConfigScene implements Scene {
   }
 
   render(ctx: CanvasRenderingContext2D) {
-    ctx.fillStyle = '#05050f';
+    ctx.fillStyle = '#120c0a';
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     const s = game().settings;
-    drawWindow(ctx, 0, 0, GAME_WIDTH, 26);
-    drawText(ctx, OPTIONS[this.cursor.index].help, 12, 9);
-    drawWindow(ctx, 0, 26, GAME_WIDTH, 156);
+    drawWindow(ctx, 0, 0, GAME_WIDTH, 22);
+    drawText(ctx, OPTIONS[this.cursor.index].help, 12, 7);
+    drawWindow(ctx, 0, 22, GAME_WIDTH, 134);
     OPTIONS.forEach((o, i) => {
-      const y = 38 + i * 22;
-      drawText(ctx, o.label, 24, y);
+      const y = 33 + i * 20;
+      if (i === this.cursor.index) drawSelection(ctx, 8, y - 4, GAME_WIDTH - 16, 16);
+      drawText(ctx, o.label, 28, y, i === this.cursor.index ? COLORS.highlight : COLORS.text);
       const idx = o.get(s);
-      let x = 118;
-      o.values.forEach((v, j) => {
-        const shown = o.values.length > 3 ? j === idx : true;
-        if (!shown) return;
-        drawText(ctx, v, x, y, j === idx ? COLORS.highlight : COLORS.disabled);
-        x += o.values.length > 3 ? 0 : 44;
-      });
       if (o.values.length > 3) {
-        drawText(ctx, '<', 108, y, COLORS.dim);
-        drawText(ctx, '>', 170, y, COLORS.dim);
-        // swatches for every window theme
+        drawText(ctx, '<', 120, y, COLORS.dim);
+        drawText(ctx, o.values[idx], 154, y, COLORS.highlight, { align: 'center' });
+        drawText(ctx, '>', 184, y, COLORS.dim);
+        // A tiny sample of every window style.
         THEME_ORDER.forEach((t, j) => {
-          ctx.fillStyle = WINDOW_THEMES[t].top;
-          ctx.fillRect(184 + j * 13, y, 10, 4);
-          ctx.fillStyle = WINDOW_THEMES[t].bottom;
-          ctx.fillRect(184 + j * 13, y + 4, 10, 4);
+          drawWindow(ctx, 198 + j * 19, y - 3, 16, 14, t);
           if (j === idx) {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(184 + j * 13, y + 10, 10, 1);
+            ctx.fillStyle = COLORS.highlight;
+            ctx.fillRect(198 + j * 19, y + 12, 16, 1);
           }
         });
+        return;
       }
+      o.values.forEach((v, j) => drawText(ctx, v, 130 + j * 50, y, j === idx ? COLORS.highlight : COLORS.disabled));
     });
-    drawCursor(ctx, 22, 41 + this.cursor.index * 22);
-    drawWindow(ctx, 0, 182, GAME_WIDTH, 42);
-    drawText(ctx, session.touch ? 'Left / Right (or A) to change. B to go back.' : 'Left / Right (or Z) to change. X to go back.', 12, 190, COLORS.dim);
-    drawText(ctx, 'Settings are saved automatically.', 12, 203, COLORS.dim);
+    drawCursor(ctx, 25, 36 + this.cursor.index * 20);
+    drawWindow(ctx, 0, 156, GAME_WIDTH, 24);
+    drawText(
+      ctx,
+      session.touch ? 'Left / Right (or A) to change, B to go back. Saved automatically.' : 'Left / Right (or Z) to change, X to go back. Saved automatically.',
+      12,
+      163,
+      COLORS.dim,
+    );
   }
 }

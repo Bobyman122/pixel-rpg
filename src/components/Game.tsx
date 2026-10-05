@@ -8,7 +8,7 @@ import { Input } from '@/engine/InputManager';
 import { SceneManager } from '@/engine/SceneManager';
 import { session } from '@/engine/session';
 import { setWindowTheme } from '@/gfx/ui';
-import { TitleScene } from '@/scenes/TitleScene';
+import { LoadingScene } from '@/scenes/LoadingScene';
 import { useGame } from '@/store/gameStore';
 import { loadSettings, saveSettings, type Settings } from '@/systems/settings';
 import { TouchControls } from './TouchControls';
@@ -100,7 +100,7 @@ export default function Game() {
 
     GameLoop.init(canvas);
     SceneManager.clear();
-    SceneManager.push(new TitleScene());
+    SceneManager.push(new LoadingScene());
     GameLoop.start();
 
     return () => {

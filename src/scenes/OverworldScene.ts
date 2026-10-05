@@ -9,6 +9,7 @@ import { SceneManager, type Scene } from '@/engine/SceneManager';
 import { session } from '@/engine/session';
 import { makeCanvas, hash2 } from '@/gfx/canvas';
 import { drawShadow, getSheet, walkFrame } from '@/gfx/characters';
+import { img } from '@/engine/assets';
 import { drawText, measureText } from '@/gfx/font';
 import { chestSprite, drawWaterGlints, pedestalSprite, signSprite, torchFlame } from '@/gfx/tiles';
 import { COLORS, drawWindow } from '@/gfx/ui';
@@ -243,7 +244,7 @@ export class OverworldScene implements Scene, DialogueHost {
     if (exit && !checkCondition(exit.when, game().flags)) {
       if (this.bumpArmed && exit.lockedText) {
         this.bumpArmed = false;
-        SceneManager.push(DialogueScene.message(exit.lockedText, undefined, { top: this.playerScreenY() > 120 }));
+        SceneManager.push(DialogueScene.message(exit.lockedText, undefined, { top: this.playerScreenY() > 92 }));
       }
       return;
     }
@@ -348,7 +349,7 @@ export class OverworldScene implements Scene, DialogueHost {
   private interact() {
     const target = this.interactTarget();
     if (!target) return;
-    const top = this.playerScreenY() > 120;
+    const top = this.playerScreenY() > 92;
     if ('def' in target) {
       const flags = game().flags;
       const entry = target.def.talk.find((t) => checkCondition(t.when, flags));
@@ -497,9 +498,18 @@ export class OverworldScene implements Scene, DialogueHost {
 
   private moverFrame(m: Mover, look: string) {
     const sheet = getSheet(look);
+    if (sheet.idle) return sheet.idle[Math.floor(Clock.time * 6) % sheet.idle.length];
     if (!m.moving) return sheet.frames[m.facing][0];
     const phase = m.steps * 2 + (m.t < 0.5 ? 1 : 2);
     return walkFrame(sheet, m.facing, phase);
+  }
+
+  /** Draw a character with its feet on the tile at (x, y); big sprites are centred on it. */
+  private drawMover(ctx: CanvasRenderingContext2D, frame: HTMLCanvasElement, x: number, y: number) {
+    const fx = Math.round(x + (TILE - frame.width) / 2);
+    const fy = Math.round(y + TILE - frame.height);
+    drawShadow(ctx, Math.round(x) + 8, Math.round(y) + 15, Math.min(28, Math.max(12, Math.round(frame.width * 0.4))));
+    ctx.drawImage(frame, fx, fy);
   }
 
   render(ctx: CanvasRenderingContext2D) {
@@ -539,23 +549,11 @@ export class OverworldScene implements Scene, DialogueHost {
     for (const n of this.visibleNpcs()) {
       const [nx, ny] = this.moverPos(n);
       const frame = this.moverFrame(n, n.def.look);
-      draw.push({
-        y: ny + TILE,
-        fn: () => {
-          drawShadow(ctx, Math.round(nx - cx) + 8, Math.round(ny - cy) + 15);
-          ctx.drawImage(frame, Math.round(nx - cx), Math.round(ny - cy) - 8);
-        },
-      });
+      draw.push({ y: ny + TILE, fn: () => this.drawMover(ctx, frame, nx - cx, ny - cy) });
     }
     const leader = game().party[0]?.look ?? 'kael';
     const pFrame = this.moverFrame(this.player, leader);
-    draw.push({
-      y: ppy + TILE + 0.5,
-      fn: () => {
-        drawShadow(ctx, Math.round(ppx - cx) + 8, Math.round(ppy - cy) + 15);
-        ctx.drawImage(pFrame, Math.round(ppx - cx), Math.round(ppy - cy) - 8);
-      },
-    });
+    draw.push({ y: ppy + TILE + 0.5, fn: () => this.drawMover(ctx, pFrame, ppx - cx, ppy - cy) });
     draw.sort((a, b) => a.y - b.y);
     for (const d of draw) d.fn();
 
@@ -568,30 +566,21 @@ export class OverworldScene implements Scene, DialogueHost {
     if (!this.player.moving && SceneManager.current === this && !this.busy) {
       const target = this.interactTarget();
       if (target) {
-        const [bx, by] = 'def' in target ? this.moverPos(target) : [target.x * TILE, target.y * TILE];
-        this.renderBubble(ctx, bx - cx + 8, by - cy - ('def' in target ? 12 : 6));
+        const isNpc = 'def' in target;
+        const [bx, by] = isNpc ? this.moverPos(target) : [target.x * TILE, target.y * TILE];
+        const tall = isNpc ? this.moverFrame(target, target.def.look).height - TILE : 0;
+        this.renderBubble(ctx, bx - cx + 8, by - cy - 4 - tall, isNpc);
       }
     }
 
     if (this.bannerTime > 0) this.renderBanner(ctx);
   }
 
-  private renderBubble(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  /** The pack's speech-bubble emote over whoever (or whatever) the player is facing. */
+  private renderBubble(ctx: CanvasRenderingContext2D, x: number, y: number, talk: boolean) {
     const bob = Math.round(Math.sin(Clock.time * 5) * 1);
-    const bx = Math.round(x - 6);
-    const by = Math.round(y - 8 + bob);
-    ctx.fillStyle = '#181030';
-    ctx.fillRect(bx, by + 1, 13, 7);
-    ctx.fillRect(bx + 1, by, 11, 9);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(bx + 1, by + 1, 11, 7);
-    ctx.fillStyle = '#181030';
-    ctx.fillRect(bx + 5, by + 9, 3, 1);
-    ctx.fillRect(bx + 6, by + 10, 1, 1);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(bx + 6, by + 8, 1, 2);
-    ctx.fillStyle = '#4a3a70';
-    for (let i = 0; i < 3; i++) ctx.fillRect(bx + 3 + i * 3, by + 4, 1, 1);
+    const icon = img(talk ? 'ui/emote-talk' : 'ui/emote-alert');
+    ctx.drawImage(icon, Math.round(x - icon.width / 2), Math.round(y - icon.height + bob));
   }
 
   private renderBanner(ctx: CanvasRenderingContext2D) {

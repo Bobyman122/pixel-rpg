@@ -3,13 +3,29 @@ import type { DialogueScript } from '@/types';
 const BOSS_BATTLE = {
   type: 'battle' as const,
   battle: {
-    enemies: ['dark_knight'],
+    enemies: ['shadow_samurai'],
     boss: true,
     music: 'boss',
     backdrop: 'lair' as const,
     canRun: false,
-    victory: { flags: ['boss_defeated'], dialogue: 'knight_defeated' },
+    victory: { flags: ['boss_defeated'], dialogue: 'samurai_defeated' },
   },
+};
+
+/** Whose portrait shows next to each speaker's name. */
+export const PORTRAITS: Record<string, string> = {
+  Kael: 'kael',
+  Lira: 'lira',
+  Finn: 'finn',
+  '???': 'finn',
+  'Elder Rowan': 'elder',
+  Bram: 'merchant',
+  Mae: 'innkeeper',
+  Tom: 'villager',
+  Hazel: 'villager2',
+  'Old Gus': 'oldman',
+  Pip: 'kid',
+  'Shadow Samurai': 'samurai',
 };
 
 export const DIALOGUES: Record<string, DialogueScript> = {
@@ -20,7 +36,7 @@ export const DIALOGUES: Record<string, DialogueScript> = {
       a: { speaker: 'Elder Rowan', text: "Kael! Thank the stars you're here. Something terrible happened last night.", next: 'b' },
       b: {
         speaker: 'Elder Rowan',
-        text: 'A knight in black armor broke into the shrine and took the Crystal of Light. Just walked out with it.',
+        text: 'A giant samurai wrapped in shadow broke into the shrine and took the Crystal of Light. Just walked out with it.',
         next: 'c',
       },
       c: {
@@ -119,7 +135,7 @@ export const DIALOGUES: Record<string, DialogueScript> = {
       a: { speaker: '???', text: "Whoa, easy! I'm not a monster. Name's Finn. Treasure hunter. Mostly honest.", next: 'b' },
       b: {
         speaker: 'Finn',
-        text: "Shadowfang Cave, huh? Word is there's a knight in black armor hiding in there with something very shiny.",
+        text: "Shadowfang Cave, huh? Word is there's a samurai the size of a barn in there, sitting on something very shiny.",
         next: 'c',
       },
       c: {
@@ -187,7 +203,7 @@ export const DIALOGUES: Record<string, DialogueScript> = {
     lines: {
       a: {
         speaker: 'Hazel',
-        text: "Wolves in the forest are quick. If things get rough, Defend halves the damage you take until your next turn.",
+        text: "Sabrecats in the forest are quick. If things get rough, Defend halves the damage you take until your next turn.",
       },
     },
   },
@@ -214,32 +230,32 @@ export const DIALOGUES: Record<string, DialogueScript> = {
     },
   },
 
-  dark_knight: {
-    id: 'dark_knight',
+  shadow_samurai: {
+    id: 'shadow_samurai',
     start: 'a',
     lines: {
-      a: { speaker: 'Dark Knight', text: 'So Millbrook sends children to fetch its precious stone.', next: 'b' },
-      b: { speaker: 'Dark Knight', text: 'This crystal belongs to my master now. Its light will feed the dark that is coming.', next: 'c' },
+      a: { speaker: 'Shadow Samurai', text: 'So Millbrook sends children to fetch its precious stone.', next: 'b' },
+      b: { speaker: 'Shadow Samurai', text: 'This crystal belongs to my master now. Its light will feed the dark that is coming.', next: 'c' },
       c: {
-        speaker: 'Dark Knight',
+        speaker: 'Shadow Samurai',
         text: 'Walk away, and I will let you crawl home. Stay... and I will bury you here.',
         choices: [
           { text: 'Give back the crystal!', next: 'fight' },
           { text: '(Back away slowly)', next: 'leave' },
         ],
       },
-      leave: { speaker: 'Dark Knight', text: 'Wise. Run along.' },
-      fight: { speaker: 'Dark Knight', text: 'Then die with it in sight.', action: BOSS_BATTLE },
+      leave: { speaker: 'Shadow Samurai', text: 'Wise. Run along.' },
+      fight: { speaker: 'Shadow Samurai', text: 'Then die with it in sight.', action: BOSS_BATTLE },
     },
   },
 
-  knight_defeated: {
-    id: 'knight_defeated',
+  samurai_defeated: {
+    id: 'samurai_defeated',
     start: 'a',
     lines: {
-      a: { speaker: 'Dark Knight', text: 'Impossible... beaten by... villagers...', next: 'b' },
-      b: { speaker: 'Dark Knight', text: 'The master... will come for it... himself...', next: 'c' },
-      c: { text: 'The Dark Knight crumbles into drifting shadow.', next: 'd' },
+      a: { speaker: 'Shadow Samurai', text: 'Impossible... beaten by... villagers...', next: 'b' },
+      b: { speaker: 'Shadow Samurai', text: 'The master... will come for it... himself...', next: 'c' },
+      c: { text: 'The Shadow Samurai crumbles into drifting shadow.', next: 'd' },
       d: { text: 'Kael takes the Crystal of Light!', action: { type: 'giveItem', itemId: 'crystal_of_light' }, next: 'e' },
       e: { text: "Its warm light fills the cavern. Time to bring it home to Millbrook." },
     },

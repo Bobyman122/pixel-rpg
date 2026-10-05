@@ -112,7 +112,7 @@ describe('turn flow', () => {
   });
 
   it('sleep skips exactly as many turns as it lasts', () => {
-    const e = fromEnemy(ENEMIES.wolf, 0);
+    const e = fromEnemy(ENEMIES.sabrecat, 0);
     e.statuses = [{ type: 'sleep', turns: 2, value: 0 }];
     expect(startOfTurn(e)).toEqual({ skip: true, woke: false });
     expect(startOfTurn(e)).toEqual({ skip: true, woke: true });
@@ -121,8 +121,8 @@ describe('turn flow', () => {
 
   it('faster units act first and the boss acts twice', () => {
     const slow = fromEnemy(ENEMIES.slime, 0);
-    const fast = fromEnemy(ENEMIES.bat, 1);
-    const boss = fromEnemy(ENEMIES.dark_knight, 2);
+    const fast = fromEnemy(ENEMIES.spider, 1);
+    const boss = fromEnemy(ENEMIES.shadow_samurai, 2);
     const order = turnOrder([slow, boss, fast], fixed(0.5));
     expect(order[0]).toBe(fast);
     expect(order.filter((u) => u === boss)).toHaveLength(2);

@@ -2,7 +2,15 @@ import { makeCanvas } from './canvas';
 import { GLYPHS, GLYPH_ALIASES, GLYPH_HEIGHT } from './fontData';
 
 export const LINE_HEIGHT = 12;
-export const TEXT_SHADOW = '#181030';
+/** Drop shadow under text; follows the window theme so it reads on light and dark panels. */
+let textShadow = '#1c1a14';
+/** Colour used when a caller doesn't pick one; follows the window theme too. */
+let textColor = '#f8f0e0';
+
+export function setTextColors(color: string, shadow: string) {
+  textColor = color;
+  textShadow = shadow;
+}
 const SPACING = 1;
 
 interface GlyphInfo {
@@ -76,7 +84,7 @@ export function drawText(
   text: string,
   x: number,
   y: number,
-  color = '#f8f8f8',
+  color = textColor,
   opts: TextOpts = {},
 ) {
   const t = normalizeText(text);
@@ -86,7 +94,7 @@ export function drawText(
   if (opts.align === 'center') px -= Math.floor(measureText(t) / 2);
   else if (opts.align === 'right') px -= measureText(t);
 
-  const shadow = opts.shadow === undefined ? TEXT_SHADOW : opts.shadow;
+  const shadow = opts.shadow === undefined ? textShadow : opts.shadow;
   const passes: [string, number][] = shadow ? [[shadow, 1], [color, 0]] : [[color, 0]];
   for (const [col, off] of passes) {
     const sheet = atlas(col);

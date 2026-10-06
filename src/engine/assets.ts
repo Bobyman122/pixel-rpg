@@ -20,7 +20,8 @@ export const IMAGE_KEYS: string[] = [
   ...['dialog-face', 'dialog', 'facebox', 'arrow', 'emote-talk', 'emote-alert', 'focus', 'icons'].map((n) => `ui/${n}`),
 ];
 
-export const ASSET_BASE = '/assets/';
+/** Relative, so the game also works when it's hosted somewhere other than the site root. */
+export const ASSET_BASE = 'assets/';
 
 const images = new Map<string, HTMLImageElement>();
 
